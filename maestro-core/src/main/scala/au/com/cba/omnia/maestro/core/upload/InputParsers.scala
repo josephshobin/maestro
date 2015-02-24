@@ -21,7 +21,7 @@ import scala.util.parsing.combinator.Parsers
 import scala.util.parsing.input.CharSequenceReader
 
 import org.joda.time.{DateTime, DateTimeFieldType, MutableDateTime}
-import org.joda.time.format.DateTimeFormat
+import org.joda.time.format.{DateTimeFormat, DateTimeFormatter}
 
 import scalaz._, Scalaz._
 
@@ -102,9 +102,10 @@ object InputParsers extends Parsers {
   /**
     * File pattern parser
     *
-    * Parses a file pattern and produces a `PartialParser`
+    * Parses part of a file pattern and produces a function
+    * that extends the partial parser to the right.
     */
-  type PatternParser = Parser[PartialParser]
+  type PatternParser = Parser[PartialParser => PartialParser]
 
   /**
     * Input file name parser
@@ -189,12 +190,13 @@ object InputParsers extends Parsers {
       normal | escaped
     }
 
-    /** Parse the largest possible literal segment */
-    def literal(tableName: String): PatternParser = {
-      val single = escape(one, any, start, end)   ^^ (_.toString)
-      val table  = surround(acceptSeq(tableSign)) ^^ (_ => tableName)
-      rep1(single | table) ^^ (lits => PartialParser.literal(lits.mkString))
-    }
+    /** Parses a literal string of characters */
+    val literal: PatternParser =
+      rep1(escape(one, any, start, end)) ^^ (lits => PartialParser.literal(lits.mkString))
+
+    /** Parser the {table} construct */
+    def table(tableName: String): PatternParser =
+      surround(acceptSeq(tableSign)) ^^ (_ => PartialParser.literal(tableName))
 
     /**
       * Parse a timestamp
@@ -213,92 +215,91 @@ object InputParsers extends Parsers {
       accept(one) ^^ (_ => PartialParser.unknown)
 
     /** Parser which succeeds if we have consumed the entire file pattern */
-    val finished: PatternParser =
+    val finished: Parser[PartialParser] =
       eof ^^ (_ => PartialParser.finished)
 
-    /**
-      * Parser which consumes a wildcard and the following segment too.
-      *
-      * The wildcard behaves more strictly than standard glob wildcards.
-      * The wildcard matches the shortest possible number of characters required
-      * for the subsequent element to succeed. This makes the wildcard slightly
-      * less convienient, but hopefully more predictable.
-      */
-    def unknownSeq(tableName: String): PatternParser =
-      rep1(accept(any)) ~> (literal(tableName) | timestamp | unknown | finished) ^^ (PartialParser.anyUntil(_))
+    /** Parser which consumes a wildcard */
+    val unknownSeq: PatternParser =
+      rep1(accept(any)) ^^ (_ => PartialParser.any)
 
     /** Match a single element element */
     def part(tableName: String): PatternParser =
-      literal(tableName) | timestamp | unknown | unknownSeq(tableName)
+      literal | table(tableName) | timestamp | unknown | unknownSeq
 
     /** Parses a file pattern, returning the subsequent file name parser */
     def pattern(tableName: String): Parser[FileNameParser] = for {
-      raw       <- rep(part(tableName)) <~ eof ^^ (_.foldRight(PartialParser.finished)(_ followedBy _))
+      raw       <- rep(part(tableName)) <~ eof ^^ (_.foldRight(PartialParser.finished)((modifier, continuation) => modifier(continuation)))
       validated <- mandatory(PartialParser.validate(raw))
     } yield validated
   }
 
   /** Factory for partial file name parsers */
   object PartialParser {
-    /** Turns a parser into a PartialParser with no fields */
+    /** Turns a parser into a function that takes a PartialParser continuation and returns a PartialParser */
     def empty(parser: Parser[_]) =
-      PartialParser(List.empty[DateTimeFieldType], parser ^^ (_ => Fields(Map.empty[DateTimeFieldType, Int], List.empty[String])))
+      (continuation: PartialParser) => PartialParser(continuation.fields, parser ~> continuation.parser)
 
     /** Partial file name parser expecting a literal */
-    def literal(lit: String) = PartialParser.empty(acceptSeq(lit))
+    def literal(lit: String) = empty(acceptSeq(lit))
 
-    /** Input parser for matching any single char */
-    val unknown = PartialParser.empty(elem("char", _ => true))
+    /** PartialParser for matching any single char */
+    val unknown = empty(next)
 
-    /** Partial file name parser that succeeds when at the end of the file name */
-    val finished = PartialParser.empty(eof)
-
-    /** Input parser for adding an arbitrary sequence of characters in front of another parser */
-    def anyUntil(next: PartialParser) = {
-      // rhs of | is lazy, so parser does not recurse indefinitely
-      def parser: Parser[Fields] = next.parser | (unknown ~> parser)
-      PartialParser(next.fields, parser)
+    /** PartialParser the largest sequence of characters for the rest of the glob to succeed */
+    def any(continuation: PartialParser) = {
+      // rhs of ~> is lazy, so parser does not recurse indefinitely
+      def parser: Parser[Fields] = (next ~> parser) | continuation.parser
+      PartialParser(continuation.fields, parser)
     }
 
     /** Input parser expecting a timestamp following a joda-time pattern */
-    def timestamp(pattern: String): MayFail[PartialParser] = for {
+    def timestamp(pattern: String): MayFail[PartialParser => PartialParser] = for {
       formatter <- MayFail.safe(DateTimeFormat.forPattern(pattern))
       fields    <- MayFail.fromOption(DateFormatInfo.fields(formatter), s"Could not find fields in date time pattern <$pattern>.")
-    } yield PartialParser(fields, Parser(in => in match {
-      // if we have underlying string, we can convert DateTimeFormatter.parseInto method into a scala Parser
-      case _: CharSequenceReader => {
-        if (in.atEnd)
-          Failure("Cannot parse date time when at end of input", in)
-         else {
-          val underlying = in.source.toString
-          val pos      = in.offset
-          val dateTime = new MutableDateTime(0)
-          val parseRes = MayFail.safe(formatter.parseInto(dateTime, underlying, pos))
-          parseRes match {
-            case \/-(newPos) if newPos >= 0 => {
-              val timeFields = fields.map(field => (field, dateTime.get(field)))
-              val negFields  = timeFields filter { case (field, value) => value < 0 } map { case (field, value) => field }
-              if (negFields.nonEmpty) Failure(s"Negative fields: ${negFields.mkString(", ")}", in)
-              else                    Success(Fields(timeFields.toMap, List.empty[String]), new CharSequenceReader(underlying, newPos))
-            }
-            case \/-(failPosCompl) => {
-              val failPos = ~failPosCompl
-              val beforeStart = underlying.substring(0, pos)
-              val beforeFail = underlying.substring(pos, failPos)
-              val afterFail = underlying.substring(failPos, underlying.length)
-              val msg = s"Failed to parse date time. Date time started at the '@' and failed at the '!' here: $beforeStart @ $beforeFail ! $afterFail"
-              Failure(msg, new CharSequenceReader(underlying, failPos))
-            }
-            case -\/(msg) => {
-              Error(msg, in)
+    } yield PartialParser(fields, timestampParser(formatter, fields)).followedBy
+
+    def timestampParser(formatter: DateTimeFormatter, fields: List[DateTimeFieldType]): Parser[Fields] =
+      Parser(in => in match {
+        // if we have underlying string, we can convert DateTimeFormatter.parseInto method into a scala Parser
+        case _: CharSequenceReader => {
+          if (in.atEnd)
+            Failure("Cannot parse date time when at end of input", in)
+          else {
+            val underlying = in.source.toString
+            val pos      = in.offset
+            val dateTime = new MutableDateTime(0)
+            val parseRes = MayFail.safe(formatter.parseInto(dateTime, underlying, pos))
+            parseRes match {
+              case \/-(newPos) if newPos >= 0 => {
+                val timeFields = fields.map(field => (field, dateTime.get(field)))
+                val negFields  = timeFields filter { case (field, value) => value < 0 } map { case (field, value) => field }
+                if (negFields.nonEmpty) Failure(s"Negative fields: ${negFields.mkString(", ")}", in)
+                else                    Success(Fields(timeFields.toMap, List.empty[String]), new CharSequenceReader(underlying, newPos))
+              }
+              case \/-(failPosCompl) => {
+                val failPos = ~failPosCompl
+                val beforeStart = underlying.substring(0, pos)
+                val beforeFail = underlying.substring(pos, failPos)
+                val afterFail = underlying.substring(failPos, underlying.length)
+                val msg = s"Failed to parse date time. Date time started at the '@' and failed at the '!' here: $beforeStart @ $beforeFail ! $afterFail"
+                Failure(msg, new CharSequenceReader(underlying, failPos))
+              }
+              case -\/(msg) => {
+                Error(msg, in)
+              }
             }
           }
         }
-      }
 
-      // if we don't have underlying string, we're hosed
-      case _ => Error(s"PartialParser only works on CharSequenceReaders", in)
-    }))
+        // if we don't have underlying string, we're hosed
+        case _ => Error(s"PartialParser only works on CharSequenceReaders", in)
+      })
+
+    /** Partial file name parser that succeeds when at the end of the file name */
+    val finished = PartialParser(List.empty[DateTimeFieldType], eof ^^ (_ => Fields(Map.empty[DateTimeFieldType, Int], List.empty[String])))
+
+    /** Take the next character */
+    def next = elem("char", _ => true)
 
     /**
       * Turns a PartialParser into a FileNameParser.

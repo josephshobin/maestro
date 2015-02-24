@@ -34,6 +34,7 @@ successfull file pattern parsing
   can parse {table}_{yyyy-MM-dd-HH}       $parseLiterals
   can parse {ddMMyyyy}{table}             $parseDifferentElementOrder
   can parse {table}*{yyyyMMdd}*           $parseWildcards
+  wildcard match is the largest possible  $wildcardMatchLarge
   can parse {table}??{yyyyMMdd}           $parseQuestionMarks
   can parse {table}_{yyyyMMdd}_{MMyyyy}   $parseDuplicateTimestamps
   can parse {yyyy}_{table}_{MMdd}         $parseCombinedTimestampFields
@@ -95,6 +96,13 @@ failing file pattern parsing
     InputParsers.forPattern("mytable", "{table}*{yyyyMMdd}*") must beLike {
       case \/-(matcher) => {
         matcher("mytable-foobar-2014-201408079999.foobar") must_== \/-(Match(List("2014", "08", "07")))
+      }
+    }
+
+  def wildcardMatchLarge =
+    InputParsers.forPattern("mytable", "*{yyyyMMdd}*") must beLike {
+      case \/-(matcher) => {
+        matcher("foo-20141225-bar-20150224.txt") must_== \/-(Match(List("2015", "02", "24")))
       }
     }
 
