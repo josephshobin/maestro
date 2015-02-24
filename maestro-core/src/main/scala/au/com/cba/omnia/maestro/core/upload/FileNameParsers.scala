@@ -15,12 +15,9 @@
 package au.com.cba.omnia.maestro.core
 package upload
 
-import scala.util.control.NonFatal
-
-import scala.util.parsing.combinator.Parsers
 import scala.util.parsing.input.CharSequenceReader
 
-import org.joda.time.{DateTime, DateTimeFieldType, MutableDateTime}
+import org.joda.time.{DateTimeFieldType, MutableDateTime}
 import org.joda.time.format.{DateTimeFormat, DateTimeFormatter}
 
 import scalaz._, Scalaz._
