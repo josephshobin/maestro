@@ -186,14 +186,15 @@ object InputParsers extends Parsers {
     val tableSign = "table"
 
     /** Surround a parser with curly brackets */
-    def surround[U](parser: Parser[U]) = accept(start) ~> parser <~ accept(end)
+    def surround[U](parser: Parser[U]) =
+      accept(start) ~> parser <~ accept(end)
 
     /** Parse a single character, which may be escaped */
     def escape(specialChars: Char*) = {
       val allSpecial = esc :: specialChars.toList
-      val normal  = elem("normal char", !allSpecial.contains(_))
-      val special = elem("special char", allSpecial.contains(_))
-      val escaped = accept(esc) ~> special
+      val normal     = elem("normal char", !allSpecial.contains(_))
+      val special    = elem("special char", allSpecial.contains(_))
+      val escaped    = accept(esc) ~> special
       normal | escaped
     }
 
@@ -207,8 +208,8 @@ object InputParsers extends Parsers {
 
     /** Parses a miscellaneous field */
     val miscField: PatternParser = {
-      val unknownItem:  Parser[MiscFieldItem] = accept(one) ^^ (_ => Unknown)
-      val wildcardItem: Parser[MiscFieldItem] = rep1(accept(any)) ^^ (_ => Wildcard)
+      val unknownItem  = accept(one)       ^^ (_ => Unknown)
+      val wildcardItem = rep1(accept(any)) ^^ (_ => Wildcard)
       surround(rep1(unknownItem | wildcardItem)) ^^ (items => PartialParser.miscField(items))
     }
 
@@ -307,9 +308,9 @@ object InputParsers extends Parsers {
             Failure("Cannot parse date time when at end of input", in)
           else {
             val underlying = in.source.toString
-            val pos      = in.offset
-            val dateTime = new MutableDateTime(0)
-            val parseRes = MayFail.safe(formatter.parseInto(dateTime, underlying, pos))
+            val pos        = in.offset
+            val dateTime   = new MutableDateTime(0)
+            val parseRes   = MayFail.safe(formatter.parseInto(dateTime, underlying, pos))
             parseRes match {
               case \/-(newPos) if newPos >= 0 => {
                 val timeFields = fields.map(field => (field, dateTime.get(field)))
@@ -318,11 +319,11 @@ object InputParsers extends Parsers {
                 else                    Success(Fields(timeFields.toMap, List.empty[String]), new CharSequenceReader(underlying, newPos))
               }
               case \/-(failPosCompl) => {
-                val failPos = ~failPosCompl
+                val failPos     = ~failPosCompl
                 val beforeStart = underlying.substring(0, pos)
-                val beforeFail = underlying.substring(pos, failPos)
-                val afterFail = underlying.substring(failPos, underlying.length)
-                val msg = s"Failed to parse date time. Date time started at the '@' and failed at the '!' here: $beforeStart @ $beforeFail ! $afterFail"
+                val beforeFail  = underlying.substring(pos, failPos)
+                val afterFail   = underlying.substring(failPos, underlying.length)
+                val msg         = s"Failed to parse date time. Date time started at the '@' and failed at the '!' here: $beforeStart @ $beforeFail ! $afterFail"
                 Failure(msg, new CharSequenceReader(underlying, failPos))
               }
               case -\/(msg) => {
@@ -341,8 +342,6 @@ object InputParsers extends Parsers {
 
     /** Take the next character */
     def next = elem("char", _ => true)
-
-
 
     /**
       * Turns a PartialParser into a FileNameParser.
