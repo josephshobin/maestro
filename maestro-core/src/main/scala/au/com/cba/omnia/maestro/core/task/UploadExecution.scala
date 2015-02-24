@@ -125,11 +125,14 @@ trait UploadExecution {
     *      - hour of day (H),
     *      - minute of hour (m), and
     *      - second of minute (s).
+    *  - Additional fields:
+    *    - If there are matching files with the same datetime, you can capture additional parts of the file name to disambiguate the files.
+    *    - You can surround a sequence of wildcards with curly brackets (e.g. `{?*}`) to use that part of the file name as an additional field.
     *
     * Some example file patterns:
     *  - `{table}{yyyyMMdd}.DAT`
     *  - `{table}_{yyyyMMdd_HHss}.TXT.*.{yyyyMMddHHss}`
-    *  - `??_{table}-{ddMMyy}*`
+    *  - `??_{table}-{ddMMyy}_seqNo{?}*`
     *
     * @param config: The upload configuration: [[UploadConfig]].
     *

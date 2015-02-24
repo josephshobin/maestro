@@ -34,7 +34,7 @@ case object NoMatch extends MatchResult
   * The file matches the pattern.
   *
   * Also contains the directories for the file
-  * corresponding to the date time fields in the pattern.
+  * corresponding to the fields in the pattern.
   */
 case class Match(dirs: List[String]) extends MatchResult
 
