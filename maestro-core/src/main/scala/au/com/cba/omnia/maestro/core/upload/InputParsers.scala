@@ -70,7 +70,6 @@ object InputParsers extends Parsers {
     /** Safely run an operation that may throw an exception */
     def safe[A](a: => A): MayFail[A] =
       try { a.right } catch { case NonFatal(ex) => ex.toString.left }
-
   }
 
   /**
@@ -116,6 +115,23 @@ object InputParsers extends Parsers {
   type FileNameParser = Parser[List[String]]
 
   /**
+    * Fields in some part of the file name.
+    *
+    * misc is a list of miscellaneous fields in the same order
+    * that they appear in the file name.
+    * */
+  case class Fields(time: Map[DateTimeFieldType, Int], misc: List[String]) {
+    def followedBy(that: Fields): MayFail[Fields] = {
+      val timeVals = this.time.mapValues(List(_)) |+| that.time.mapValues(List(_))
+      val fields   = timeVals.toList.traverse[MayFail, (DateTimeFieldType, Int)] { case (k,vs) => vs.distinct match {
+        case List(v)   => (k,v).right
+        case conflicts => s"conflicting values found for $k: ${vs.mkString(", ")}".left
+      }}
+      fields.map(fs => Fields(fs.toMap, this.misc ++ that.misc))
+    }
+  }
+
+  /**
     * Building block of an input file name parser.
     *
     * Has a pre-determined list of date time fields it sets. Some primitive
@@ -123,8 +139,8 @@ object InputParsers extends Parsers {
     * indicates the date times their parsers return are dummy values with no
     * fields set.
     */
-  case class PartialParser(fields: List[DateTimeFieldType], parser: Parser[DateTime])
-      extends Parser[DateTime] {
+  case class PartialParser(fields: List[DateTimeFieldType], parser: Parser[Fields])
+      extends Parser[Fields] {
     def apply(in: Input) = parser(in)
 
     /**
@@ -132,42 +148,16 @@ object InputParsers extends Parsers {
       *
       * It is a parse error (not failure) if the date time fields are consistent.
       */
-    def followedBy(other: PartialParser) = {
-      val combinedFields = (fields ++ other.fields).distinct
+    def followedBy(that: PartialParser) = {
+      val combinedFields = (this.fields ++ that.fields).distinct
       val combinedParser = for {
-        dt1 <- parser
-        dt2 <- other.parser
-        dt3 <- mandatory(combineDateTimes(dt1, fields, dt2, other.fields))
-      } yield dt3
+        fields1 <- this.parser
+        fields2 <- that.parser
+        fields3 <- mandatory(fields1 followedBy fields2)
+      } yield fields3
       PartialParser(combinedFields, combinedParser)
     }
-
-    /**
-      * Combine the information in two date times safely.
-      *
-      * Given two date times, and a list of fields defined in each date time,
-      * return a new date time containing the union of all fields. It is an
-      * error if the date times have different values for any field
-      */
-    def combineDateTimes(dt1: DateTime, fs1: List[DateTimeFieldType],
-      dt2: DateTime, fs2: List[DateTimeFieldType]): MayFail[DateTime] =
-
-      // if there are no fields in fs1, just return unmodified dt2
-      if (fs1.isEmpty) dt2.right
-
-      // if there are fields in fs1, copy fields from fs2 to fs1
-      // (if there are no fields in fs2 this will quickly return unmodifed dt1)
-      else fs2.foldLeftM[MayFail, DateTime](dt1)((dtAcc, f) => {
-        val field  = dt2.property(f).getField
-        val dt2Val = field.get(dt2.getMillis)
-        val dt1Val = field.get(dt1.getMillis)
-        val inFs1  = fs1.contains(f)
-        if      (!inFs1)                    dtAcc.withField(f, dt2Val).right
-        else if (inFs1 && dt2Val == dt1Val) dtAcc.right
-        else  /*inFs1 && dt2Val != dt1Val*/ s"conflicting values found for $f".left
-      })
   }
-
 
   /** Succeeds if we are at end of file */
   val eof =
@@ -243,66 +233,53 @@ object InputParsers extends Parsers {
 
     /** Parses a file pattern, returning the subsequent file name parser */
     def pattern(tableName: String): Parser[FileNameParser] = for {
-      parts     <- rep(part(tableName))
-      _         <- eof
-      raw       =  parts.foldRight(PartialParser.finished)(_ followedBy _)
+      raw       <- rep(part(tableName)) <~ eof ^^ (_.foldRight(PartialParser.finished)(_ followedBy _))
       validated <- mandatory(PartialParser.validate(raw))
     } yield validated
   }
 
   /** Factory for partial file name parsers */
   object PartialParser {
+    /** Turns a parser into a PartialParser with no fields */
+    def empty(parser: Parser[_]) =
+      PartialParser(List.empty[DateTimeFieldType], parser ^^ (_ => Fields(Map.empty[DateTimeFieldType, Int], List.empty[String])))
 
     /** Partial file name parser expecting a literal */
-    def literal(lit: String) = PartialParser(List.empty[DateTimeFieldType],
-      acceptSeq(lit) ^^ (_ => new DateTime(0))
-    )
+    def literal(lit: String) = PartialParser.empty(acceptSeq(lit))
 
     /** Input parser for matching any single char */
-    val unknown = PartialParser(List.empty[DateTimeFieldType],
-      elem("char", _ => true) ^^ (_ => new DateTime(0)
-    ))
+    val unknown = PartialParser.empty(elem("char", _ => true))
 
     /** Partial file name parser that succeeds when at the end of the file name */
-    val finished = PartialParser(List.empty[DateTimeFieldType],
-      eof ^^ (_ => new DateTime(0))
-    )
+    val finished = PartialParser.empty(eof)
 
     /** Input parser for adding an arbitrary sequence of characters in front of another parser */
     def anyUntil(next: PartialParser) = {
       // rhs of | is lazy, so parser does not recurse indefinitely
-      def parser: Parser[DateTime] = next.parser | (unknown ~> parser)
+      def parser: Parser[Fields] = next.parser | (unknown ~> parser)
       PartialParser(next.fields, parser)
     }
 
-    /**
-      * Input parser expecting a timestamp following a joda-time pattern
-      *
-      * We try to ensure that the parser does not allow joda-time to parse
-      * a negative year.
-      */
+    /** Input parser expecting a timestamp following a joda-time pattern */
     def timestamp(pattern: String): MayFail[PartialParser] = for {
       formatter <- MayFail.safe(DateTimeFormat.forPattern(pattern))
-      fields    <- MayFail.fromOption(DateFormatInfo.fields(formatter),
-        s"Could not find fields in date time pattern <$pattern>."
-      )
-      yearFirst = pattern startsWith "y" // hack to avoid negative years
+      fields    <- MayFail.fromOption(DateFormatInfo.fields(formatter), s"Could not find fields in date time pattern <$pattern>.")
     } yield PartialParser(fields, Parser(in => in match {
       // if we have underlying string, we can convert DateTimeFormatter.parseInto method into a scala Parser
       case _: CharSequenceReader => {
         if (in.atEnd)
           Failure("Cannot parse date time when at end of input", in)
-        else if (yearFirst && in.first == '-')
-          Failure("No negative years", in) // hack to avoid negative years
-        else {
+         else {
           val underlying = in.source.toString
-          val pos = in.offset
-          val mutDateTime = new MutableDateTime(0)
-          val parseRes = MayFail.safe(formatter.parseInto(mutDateTime, underlying, pos))
-          val dateTime = mutDateTime.toDateTime
+          val pos      = in.offset
+          val dateTime = new MutableDateTime(0)
+          val parseRes = MayFail.safe(formatter.parseInto(dateTime, underlying, pos))
           parseRes match {
             case \/-(newPos) if newPos >= 0 => {
-              Success(dateTime, new CharSequenceReader(underlying, newPos))
+              val timeFields = fields.map(field => (field, dateTime.get(field)))
+              val negFields  = timeFields filter { case (field, value) => value < 0 } map { case (field, value) => field }
+              if (negFields.nonEmpty) Failure(s"Negative fields: ${negFields.mkString(", ")}", in)
+              else                    Success(Fields(timeFields.toMap, List.empty[String]), new CharSequenceReader(underlying, newPos))
             }
             case \/-(failPosCompl) => {
               val failPos = ~failPosCompl
@@ -333,16 +310,16 @@ object InputParsers extends Parsers {
     def validate(parser: PartialParser): MayFail[FileNameParser] = for {
       _           <- MayFail.guard(parser.fields.nonEmpty, s"no date time fields found")
       fieldOrders <- parser.fields.traverse[MayFail, Int](fieldOrder(_))
-      dirFuncs    <- (0 to fieldOrders.max).toList.traverse[MayFail, DateTime => String](i =>
-        MayFail
-          .guard(fieldOrders contains i, s"missing date time field ${uploadFields(i)}")
-          .map(_ => dateTime => {
-            val field = uploadFields(i)
-            val value = dateTime.property(field).getField.get(dateTime.getMillis)
-            if (field equals DateTimeFieldType.year) f"$value%04d" else f"$value%02d"
-          })
-      )
-    } yield parser ^^ (dateTime => dirFuncs map (_(dateTime)))
+      expected     = uploadFields.take(fieldOrders.max + 1)
+      missing      = expected.filter(!parser.fields.contains(_))
+      _           <- MayFail.guard(missing.empty, s"missing date time fields: ${missing.mkString(", ")}")
+    } yield parser ^^ (fields => {
+      val timeDirs = expected.map(field => {
+        val value = fields.time(field)
+        if (field equals DateTimeFieldType.year) f"$value%04d" else f"$value%02d"
+      })
+      timeDirs ++ fields.misc
+    })
 
     /** Ordered list of fields we permit in upload time stamps */
     val uploadFields = List(
