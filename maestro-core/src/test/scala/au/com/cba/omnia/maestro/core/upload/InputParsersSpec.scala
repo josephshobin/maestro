@@ -38,6 +38,9 @@ successfull file pattern parsing
   can parse {table}??{yyyyMMdd}           $parseQuestionMarks
   can parse {table}_{yyyyMMdd}_{MMyyyy}   $parseDuplicateTimestamps
   can parse {yyyy}_{table}_{MMdd}         $parseCombinedTimestampFields
+  can parse {table}-{yyyy-MM-dd}-{??}*    $parseMiscField
+  can parse {yyyyMMdd}{*??*?**}           $parseCrazyMiscField
+  can parse {*}-{ddMMyy}-{*}              $parseTwoMiscFields
 
 failing file pattern parsing
 ----------------------------
@@ -125,6 +128,27 @@ failing file pattern parsing
     InputParsers.forPattern("cars", "{yyyy}_{table}_{MMdd}") must beLike {
       case \/-(matcher) => {
         matcher("2014_cars_0807") must_== \/-(Match(List("2014", "08", "07")))
+      }
+    }
+
+  def parseMiscField =
+    InputParsers.forPattern("mytable", "{table}-{yyyy-MM-dd}-{??}*") must beLike {
+      case \/-(matcher) => {
+        matcher("mytable-2015-02-24-a1.DAT") must_== \/-(Match(List("2015", "02", "24", "a1")))
+      }
+    }
+
+  def parseCrazyMiscField =
+    InputParsers.forPattern("mytable", "{yyyyMMdd}{*??*?**}") must beLike {
+      case \/-(matcher) => {
+        matcher("20150224foo") must_== \/-(Match(List("2015", "02", "24", "foo")))
+      }
+    }
+
+  def parseTwoMiscFields =
+    InputParsers.forPattern("foo", "{*}-{ddMMyy}-{*}") must beLike {
+      case \/-(matcher) => {
+        matcher("000-240215-bbb") must_== \/-(Match(List("2015", "02", "24", "000", "bbb")))
       }
     }
 

@@ -133,6 +133,13 @@ object InputParsers extends Parsers {
   }
 
   /**
+    * We allow unknown characters (?) and wildcards (*) in misc fields
+    */
+  sealed trait MiscFieldItem
+  case object Unknown extends MiscFieldItem
+  case object Wildcard extends MiscFieldItem
+
+  /**
     * Building block of an input file name parser.
     *
     * Has a pre-determined list of date time fields it sets. Some primitive
@@ -194,16 +201,18 @@ object InputParsers extends Parsers {
     val literal: PatternParser =
       rep1(escape(one, any, start, end)) ^^ (lits => PartialParser.literal(lits.mkString))
 
-    /** Parser the {table} construct */
+    /** Parses the {table} construct */
     def table(tableName: String): PatternParser =
       surround(acceptSeq(tableSign)) ^^ (_ => PartialParser.literal(tableName))
 
-    /**
-      * Parse a timestamp
-      *
-      * It is an error if the pattern inside curly braces is not a valid
-      * timestamp format (except for "{table}", of course).
-      */
+    /** Parses a miscellaneous field */
+    val miscField: PatternParser = {
+      val unknownItem:  Parser[MiscFieldItem] = accept(one) ^^ (_ => Unknown)
+      val wildcardItem: Parser[MiscFieldItem] = rep1(accept(any)) ^^ (_ => Wildcard)
+      surround(rep1(unknownItem | wildcardItem)) ^^ (items => PartialParser.miscField(items))
+    }
+
+    /** Parse a timestamp. We should try table and miscField first. */
     val timestamp: PatternParser = for {
       tsPattern <- surround(rep(escape(end))) ^^ (_.mkString)
       fnParser  <- if (tsPattern == tableSign) failure("'table' matches the table name, not a date time")
@@ -220,11 +229,11 @@ object InputParsers extends Parsers {
 
     /** Parser which consumes a wildcard */
     val unknownSeq: PatternParser =
-      rep1(accept(any)) ^^ (_ => PartialParser.any)
+      rep1(accept(any)) ^^ (_ => PartialParser.unknownSeq)
 
     /** Match a single element element */
     def part(tableName: String): PatternParser =
-      literal | table(tableName) | timestamp | unknown | unknownSeq
+      literal | table(tableName) | miscField | timestamp | unknown | unknownSeq
 
     /** Parses a file pattern, returning the subsequent file name parser */
     def pattern(tableName: String): Parser[FileNameParser] = for {
@@ -235,7 +244,7 @@ object InputParsers extends Parsers {
 
   /** Factory for partial file name parsers */
   object PartialParser {
-    /** Turns a parser into a function that takes a PartialParser continuation and returns a PartialParser */
+    /** Create a PartialParser => PartialParser from a parser which does not produce any Fields info */
     def empty(parser: Parser[_]) =
       (continuation: PartialParser) => PartialParser(continuation.fields, parser ~> continuation.parser)
 
@@ -245,12 +254,44 @@ object InputParsers extends Parsers {
     /** PartialParser for matching any single char */
     val unknown = empty(next)
 
-    /** PartialParser the largest sequence of characters for the rest of the glob to succeed */
-    def any(continuation: PartialParser) = {
+    /** PartialParser consuming the largest sequence of characters for the rest of the glob to succeed */
+    def unknownSeq(continuation: PartialParser) = {
       // rhs of ~> is lazy, so parser does not recurse indefinitely
       def parser: Parser[Fields] = (next ~> parser) | continuation.parser
       PartialParser(continuation.fields, parser)
     }
+
+    /**
+      * PartialParser which stores a list of wildcards as a misc field
+      *
+      * With this way of implementing wildcards by passing around the continuation
+      * parser, I am not sure how to avoid duplicating logic with unknownSeq above.
+      */
+    def miscField(items: List[MiscFieldItem]) =
+      (continuation: PartialParser) => {
+        def makeParser(items: List[MiscFieldItem]): Parser[(String, Fields)] = items match {
+          case Nil => continuation.parser ^^ (fields => ("", fields))
+
+          case (Unknown :: restItems) => for {
+            chr                 <- next
+            (restField, fields) <- makeParser(restItems)
+          } yield (chr.toString + restField, fields)
+
+          case currItems @ (Wildcard :: restItems) => {
+            val wildcardMove = for {
+              chr                 <- next
+              (restField, fields) <- makeParser(currItems)
+            } yield (chr.toString + restField, fields)
+            val wildcardStop = makeParser(restItems)
+            wildcardMove | wildcardStop
+          }
+        }
+
+        val parser = makeParser(items) ^? {
+          case (miscField, fields) if !miscField.isEmpty => Fields(fields.time, miscField :: fields.misc)
+        }
+        PartialParser(continuation.fields, parser)
+      }
 
     /** Input parser expecting a timestamp following a joda-time pattern */
     def timestamp(pattern: String): MayFail[PartialParser => PartialParser] = for {
@@ -300,6 +341,8 @@ object InputParsers extends Parsers {
 
     /** Take the next character */
     def next = elem("char", _ => true)
+
+
 
     /**
       * Turns a PartialParser into a FileNameParser.
