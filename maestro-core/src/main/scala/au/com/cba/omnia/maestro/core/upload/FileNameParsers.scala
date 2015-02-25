@@ -38,24 +38,14 @@ case object NoMatch extends MatchResult
   */
 case class Match(dirs: List[String]) extends MatchResult
 
-/** Contains makeFileNameParser, the FileNameParser, and the PartialParser */
-trait FileNameParsers extends ParserBase {
+/** Contains makeFileNameParser, the FileNameMatcher, and the PartialParser */
+trait FileNameMatchers extends ParserBase {
 
   /** Apply a pattern parser to a pattern and get a file name parsing function back. */
-  def makeFileNameParser(patternParser: Parser[FileNameParser], pattern: String): MayFail[String => MayFail[MatchResult]] =
+  def makeFileNameMatcher(patternParser: Parser[FileNameMatcher], pattern: String): MayFail[FileNameMatcher] =
     patternParser(new CharSequenceReader(pattern)) match {
-      case NoSuccess(msg, _) => {
-        msg.left
-      }
-      case Success(fileNameParser, _) => {
-        val func: String => MayFail[MatchResult] =
-          (fileName: String) => fileNameParser(new CharSequenceReader(fileName)) match {
-            case Error(msg, _)    => msg.left
-            case Failure(_, _)    => NoMatch.right
-            case Success(dirs, _) => Match(dirs).right
-          }
-        func.right
-      }
+      case NoSuccess(msg, _)  => msg.left
+      case Success(parser, _) => parser.right
     }
 
   /**
@@ -64,7 +54,59 @@ trait FileNameParsers extends ParserBase {
     * Parses a file name and returns the directories which the file should be
     * placed in.
     */
-  type FileNameParser = Parser[List[String]]
+  case class FileNameMatcher(parser: Parser[List[String]]) {
+    def apply(fileName: String): MayFail[MatchResult] =
+      parser(new CharSequenceReader(fileName)) match {
+        case Error(msg, _)    => msg.left
+        case Failure(_, _)    => NoMatch.right
+        case Success(dirs, _) => Match(dirs).right
+      }
+  }
+
+  /** Factory function for FileNameMatchers */
+  object FileNameMatcher {
+
+    /** creates a FileNameMatcher from a list of PartialParser's */
+    def fromParts(parts: List[PartialParser]): MayFail[FileNameMatcher] =
+      validateTimeFields(parts).map(timeFields => {
+        val finished    = eof ^^ (_ => Fields(Map.empty[DateTimeFieldType, Int], List.empty[String]))
+        val fieldParser = parts.foldRight(finished)((part, parser) => part.extend(parser))
+        val fileParser  = fieldParser ^^ (fields => {
+          val timeDirs = timeFields.map(field => timeDir(field, fields.time(field)))
+          timeDirs ++ fields.misc
+        })
+        FileNameMatcher(fileParser)
+      })
+
+    def timeDir(field: DateTimeFieldType, value: Int) =
+      if (field equals DateTimeFieldType.year) f"$value%04d" else f"$value%02d"
+
+    def validateTimeFields(parts: List[PartialParser]): MayFail[List[DateTimeFieldType]] = {
+      val fields = parts.flatMap(_.timeFields).distinct
+      for {
+        _           <- MayFail.guard(fields.nonEmpty, s"no date time fields found")
+        fieldOrders <- fields.traverse[MayFail, Int](fieldOrder(_))
+        expected     = uploadFields.take(fieldOrders.max + 1)
+        missing      = expected.filter(!fields.contains(_))
+        _           <- MayFail.guard(missing.empty, s"missing date time fields: ${missing.mkString(", ")}")
+      } yield expected
+    }
+
+    val uploadFields = List(
+      DateTimeFieldType.year,
+      DateTimeFieldType.monthOfYear,
+      DateTimeFieldType.dayOfMonth,
+      DateTimeFieldType.hourOfDay,
+      DateTimeFieldType.minuteOfHour,
+      DateTimeFieldType.secondOfMinute
+    )
+
+    def fieldOrder(t: DateTimeFieldType) = {
+      val index = uploadFields indexOf t
+      if (index >= 0) index.right
+      else            s"Upload does not accept $t fields".left
+    }
+  }
 
   /**
     * Fields in some part of the file name.
@@ -88,32 +130,22 @@ trait FileNameParsers extends ParserBase {
   case object Unknown extends MiscFieldItem
   case object Wildcard extends MiscFieldItem
 
-  /** Building block of a file name parser. */
-  case class PartialParser(fields: List[DateTimeFieldType], parser: Parser[Fields])
-      extends Parser[Fields] {
-    def apply(in: Input) = parser(in)
-
-    /**
-      * Sequential composition with another partial file name parser
-      *
-      * It is a parse error (not failure) if the date time fields are consistent.
-      */
-    def followedBy(that: PartialParser) = {
-      val combinedFields = (this.fields ++ that.fields).distinct
-      val combinedParser = for {
-        fields1 <- this.parser
-        fields2 <- that.parser
-        fields3 <- mandatory(fields1 followedBy fields2)
-      } yield fields3
-      PartialParser(combinedFields, combinedParser)
-    }
-  }
+  /**
+    * Parses part of a file name.
+    *
+    * The extend field takes the parser thay parses the rest of the file,
+    * and extends it to parse this part of the file too.
+    */
+  case class PartialParser(timeFields: List[DateTimeFieldType], extend: Parser[Fields] => Parser[Fields])
 
   /** Factory for partial file name parsers */
   object PartialParser {
-    /** Create a PartialParser => PartialParser from a parser which does not produce any Fields info */
+
+    val noFields = List.empty[DateTimeFieldType]
+
+    /** Create a PartialParser from a parser which does not produce any Fields info */
     def empty(parser: Parser[_]) =
-      (continuation: PartialParser) => PartialParser(continuation.fields, parser ~> continuation.parser)
+      PartialParser(noFields, continuation => parser ~> continuation)
 
     /** Partial file name parser expecting a literal */
     def literal(lit: String) = empty(acceptSeq(lit))
@@ -122,11 +154,10 @@ trait FileNameParsers extends ParserBase {
     val unknown = empty(next)
 
     /** PartialParser consuming the largest sequence of characters for the rest of the glob to succeed */
-    def unknownSeq(continuation: PartialParser) = {
-      // rhs of ~> is lazy, so parser does not recurse indefinitely
-      def parser: Parser[Fields] = (next ~> parser) | continuation.parser
-      PartialParser(continuation.fields, parser)
-    }
+    val unknownSeq = PartialParser(noFields, continuation => {
+      def parser: Parser[Fields] = (next ~> parser) | continuation
+      parser
+    })
 
     /**
       * PartialParser which stores a list of wildcards as a misc field
@@ -134,37 +165,43 @@ trait FileNameParsers extends ParserBase {
       * With this way of implementing wildcards by passing around the continuation
       * parser, I am not sure how to avoid duplicating logic with unknownSeq above.
       */
-    def miscField(items: List[MiscFieldItem]) =
-      (continuation: PartialParser) => {
-        def makeParser(items: List[MiscFieldItem]): Parser[(String, Fields)] = items match {
-          case Nil => continuation.parser ^^ (fields => ("", fields))
+    def miscField(items: List[MiscFieldItem]) = PartialParser(noFields, continuation => {
+      def makeParser(items: List[MiscFieldItem]): Parser[(String, Fields)] = items match {
+        case Nil => continuation ^^ (fields => ("", fields))
 
-          case (Unknown :: restItems) => for {
+        case (Unknown :: restItems) => for {
+          chr                 <- next
+          (restField, fields) <- makeParser(restItems)
+        } yield (chr.toString + restField, fields)
+
+        case currItems @ (Wildcard :: restItems) => {
+          val wildcardMove = for {
             chr                 <- next
-            (restField, fields) <- makeParser(restItems)
+            (restField, fields) <- makeParser(currItems)
           } yield (chr.toString + restField, fields)
-
-          case currItems @ (Wildcard :: restItems) => {
-            val wildcardMove = for {
-              chr                 <- next
-              (restField, fields) <- makeParser(currItems)
-            } yield (chr.toString + restField, fields)
-            val wildcardStop = makeParser(restItems)
-            wildcardMove | wildcardStop
-          }
+          val wildcardStop = makeParser(restItems)
+          wildcardMove | wildcardStop
         }
-
-        val parser = makeParser(items) ^? {
-          case (miscField, fields) if !miscField.isEmpty => Fields(fields.time, miscField :: fields.misc)
-        }
-        PartialParser(continuation.fields, parser)
       }
 
+      makeParser(items) ^? {
+        case (miscField, fields) if !miscField.isEmpty => Fields(fields.time, miscField :: fields.misc)
+      }
+    })
+
     /** Input parser expecting a timestamp following a joda-time pattern */
-    def timestamp(pattern: String): MayFail[PartialParser => PartialParser] = for {
+    def timestamp(pattern: String): MayFail[PartialParser] = for {
       formatter <- MayFail.safe(DateTimeFormat.forPattern(pattern))
       fields    <- MayFail.fromOption(DateFormatInfo.fields(formatter), s"Could not find fields in date time pattern <$pattern>.")
-    } yield PartialParser(fields, timestampParser(formatter, fields)).followedBy
+    } yield {
+      val parser = timestampParser(formatter, fields)
+      val extend = (continuation: Parser[Fields]) => for {
+        fields1 <- parser
+        fields2 <- continuation
+        fields3 <- mandatory(fields1 followedBy fields2)
+      } yield fields3
+      PartialParser(fields, extend)
+    }
 
     def timestampParser(formatter: DateTimeFormatter, fields: List[DateTimeFieldType]): Parser[Fields] =
       Parser(in => in match {
@@ -202,49 +239,5 @@ trait FileNameParsers extends ParserBase {
         // if we don't have underlying string, we're hosed
         case _ => Error(s"PartialParser only works on CharSequenceReaders", in)
       })
-
-    /** Partial file name parser that succeeds when at the end of the file name */
-    val finished = PartialParser(List.empty[DateTimeFieldType], eof ^^ (_ => Fields(Map.empty[DateTimeFieldType, Int], List.empty[String])))
-
-    /** Take the next character */
-    def next = elem("char", _ => true)
-
-    /**
-      * Turns a PartialParser into a FileNameParser.
-      *
-      * Checks that the fields in the file pattern are valid. The restrictions
-      * on file pattern fields are described in
-      * [[au.cba.com.omnia.maestro.core.task.Upload]].
-      */
-    def validate(parser: PartialParser): MayFail[FileNameParser] = for {
-      _           <- MayFail.guard(parser.fields.nonEmpty, s"no date time fields found")
-      fieldOrders <- parser.fields.traverse[MayFail, Int](fieldOrder(_))
-      expected     = uploadFields.take(fieldOrders.max + 1)
-      missing      = expected.filter(!parser.fields.contains(_))
-      _           <- MayFail.guard(missing.empty, s"missing date time fields: ${missing.mkString(", ")}")
-    } yield parser ^^ (fields => {
-      val timeDirs = expected.map(field => {
-        val value = fields.time(field)
-        if (field equals DateTimeFieldType.year) f"$value%04d" else f"$value%02d"
-      })
-      timeDirs ++ fields.misc
-    })
-
-    /** Ordered list of fields we permit in upload time stamps */
-    val uploadFields = List(
-      DateTimeFieldType.year,
-      DateTimeFieldType.monthOfYear,
-      DateTimeFieldType.dayOfMonth,
-      DateTimeFieldType.hourOfDay,
-      DateTimeFieldType.minuteOfHour,
-      DateTimeFieldType.secondOfMinute
-    )
-
-    /** Assign numbers to each field that upload works with */
-    def fieldOrder(t: DateTimeFieldType) = {
-      val index = uploadFields indexOf t
-      if (index >= 0) index.right
-      else            s"Upload does not accept $t fields".left
-    }
   }
 }

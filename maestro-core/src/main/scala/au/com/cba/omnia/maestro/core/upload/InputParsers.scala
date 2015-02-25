@@ -18,6 +18,6 @@ package upload
 object InputParsers extends PatternParsers {
   def forPattern(tablename: String, filePattern: String) = {
     val patternParser = makePatternParser(tablename)
-    makeFileNameParser(patternParser, filePattern)
+    makeFileNameMatcher(patternParser, filePattern)
   }
 }

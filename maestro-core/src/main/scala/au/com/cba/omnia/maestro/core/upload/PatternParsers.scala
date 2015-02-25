@@ -18,28 +18,20 @@ package upload
 /**
   *  Contains `makePatternParser` and `PartialPatternParser`
   */
-trait PatternParsers extends FileNameParsers {
+trait PatternParsers extends FileNameMatchers {
 
-  /** Create a parser which parses a pattern and returns the file name parser */
-  def makePatternParser(tableName: String): Parser[FileNameParser] = for {
-    raw       <- rep(PartialPatternParser.part(tableName)) <~ eof ^^ (_.foldRight(PartialParser.finished)((modifier, continuation) => modifier(continuation)))
-    validated <- mandatory(PartialParser.validate(raw))
-  } yield validated
+  def makePatternParser(tableName: String): Parser[FileNameMatcher] = for {
+    parts  <- rep(PartialPatternParser.part(tableName)) <~ eof
+    parser <- mandatory(FileNameMatcher.fromParts(parts))
+  } yield parser
 
   /**
     * Partial pattern parser
     *
     * Parses part of a pattern and produces the corresponding parser for the
-    * corresponding part of the file name. However, we don't directly produce
-    * that parser. Instead, we return a function that takes the parser to be run
-    * on the rest of the file name, and returns the parser that runs on this
-    * part of the file name plus the rest.
-    *
-    * This indirection is used for wildcards, where the amount of file name we
-    * need to match depends on the rest of the parser successfully parsing the
-    * rest of the file name.
+    * corresponding part of the file name.
     */
-  type PartialPatternParser = Parser[PartialParser => PartialParser]
+  type PartialPatternParser = Parser[PartialParser]
 
   /** Factory for `PartialPatternParser`s */
   object PartialPatternParser {
@@ -49,9 +41,10 @@ trait PatternParsers extends FileNameParsers {
     val end       = '}'
     val tableSign = "table"
 
-    /** Surround a parser with brackets of some sort */
-    def surround[U](parser: Parser[U]) =
-      accept(start) ~> parser <~ accept(end)
+    /** Match a single element element */
+    def part(tableName: String): PartialPatternParser =
+      literal | table(tableName) | miscField | timestamp | unknown | unknownSeq
+
 
     /** Parses a literal string of characters */
     val literal: PartialPatternParser =
@@ -83,8 +76,8 @@ trait PatternParsers extends FileNameParsers {
     val unknownSeq: PartialPatternParser =
       rep1(accept(any)) ^^ (_ => PartialParser.unknownSeq)
 
-    /** Match a single element element */
-    def part(tableName: String): PartialPatternParser =
-      literal | table(tableName) | miscField | timestamp | unknown | unknownSeq
+    /** Surround a parser with brackets of some sort */
+    def surround[U](parser: Parser[U]) =
+      accept(start) ~> parser <~ accept(end)
   }
 }

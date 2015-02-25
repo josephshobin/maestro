@@ -59,6 +59,9 @@ trait ParserBase extends Parsers {
   val eof =
     Parser(in => if (in.atEnd) Success((), in) else Failure("not at EOF", in))
 
+  /** Take the next character */
+  def next = elem("char", _ => true)
+
   /** The character used to escape other special characters */
   val esc       = '\\'
 
@@ -70,6 +73,4 @@ trait ParserBase extends Parsers {
     val escaped    = accept(esc) ~> special
     normal | escaped
   }
-
-
 }
