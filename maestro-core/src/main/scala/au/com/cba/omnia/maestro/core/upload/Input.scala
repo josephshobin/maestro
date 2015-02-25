@@ -41,7 +41,7 @@ object Input {
   def findFiles(
     sourceDir: String, tablename: String, filePattern: String, controlPattern: Regex
   ): String \/ InputFiles = for {
-    matcher <- InputParsers.forPattern(tablename, filePattern)
+    matcher <- PatternParsers.makeFileNameMatcher(tablename, filePattern)
     files   <- fromNullable((new File(sourceDir)).listFiles, s"${sourceDir} does not exist").map(_.toList)
     results <- files traverse (file => matcher(file.getName))
   } yield {

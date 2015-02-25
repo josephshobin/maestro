@@ -15,12 +15,23 @@
 package au.com.cba.omnia.maestro.core
 package upload
 
-/**
-  *  Contains `makePatternParser` and `PartialPatternParser`
-  */
-trait PatternParsers extends FileNameMatchers {
+import scala.util.parsing.input.CharSequenceReader
 
-  def makePatternParser(tableName: String): Parser[FileNameMatcher] = for {
+import scalaz._, Scalaz._
+
+/** Contains `makeFileNameMatcher` and `PartialPatternParser` */
+object PatternParsers extends FileNameMatchers {
+
+  /** Parses a pattern and produces */
+  def makeFileNameMatcher(tableName: String, pattern: String): MayFail[FileNameMatcher] = {
+    val parser = patternParser(tableName)
+    parser(new CharSequenceReader(pattern)) match {
+      case NoSuccess(msg, _)  => msg.left
+      case Success(parser, _) => parser.right
+    }
+  }
+
+  def patternParser(tableName: String): Parser[FileNameMatcher] = for {
     parts  <- rep(PartialPatternParser.part(tableName)) <~ eof
     parser <- mandatory(FileNameMatcher.fromParts(parts))
   } yield parser

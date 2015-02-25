@@ -38,15 +38,8 @@ case object NoMatch extends MatchResult
   */
 case class Match(dirs: List[String]) extends MatchResult
 
-/** Contains makeFileNameParser, the FileNameMatcher, and the PartialParser */
+/** Contains FileNameMatcher and PartialParser */
 trait FileNameMatchers extends ParserBase {
-
-  /** Apply a pattern parser to a pattern and get a file name parsing function back. */
-  def makeFileNameMatcher(patternParser: Parser[FileNameMatcher], pattern: String): MayFail[FileNameMatcher] =
-    patternParser(new CharSequenceReader(pattern)) match {
-      case NoSuccess(msg, _)  => msg.left
-      case Success(parser, _) => parser.right
-    }
 
   /**
     * Input file name parser

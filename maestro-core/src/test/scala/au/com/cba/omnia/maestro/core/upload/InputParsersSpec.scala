@@ -53,7 +53,7 @@ failing file pattern parsing
 """
 
   def parseUpToDay =
-    InputParsers.forPattern("mytable", "{table}{yyyyMMdd}") must beLike {
+    PatternParsers.makeFileNameMatcher("mytable", "{table}{yyyyMMdd}") must beLike {
       case \/-(matcher) => {
         matcher("mytable20140807") must_== \/-(Match(List("2014", "08", "07")))
         matcher("mytable20140830") must_== \/-(Match(List("2014", "08", "30")))
@@ -61,56 +61,56 @@ failing file pattern parsing
     }
 
   def parseUpToSecond =
-    InputParsers.forPattern("mytable", "{table}{yyyyMMddHHmmss}") must beLike {
+    PatternParsers.makeFileNameMatcher("mytable", "{table}{yyyyMMddHHmmss}") must beLike {
       case \/-(matcher) => {
         matcher("mytable20140807203000") must_== \/-(Match(List("2014", "08", "07", "20", "30", "00")))
       }
     }
 
   def parseDifferentFieldOrder =
-    InputParsers.forPattern("foobar", "{table}{yyyyddMM}") must beLike {
+    PatternParsers.makeFileNameMatcher("foobar", "{table}{yyyyddMM}") must beLike {
       case \/-(matcher) => {
         matcher("foobar20140708") must_== \/-(Match(List("2014", "08", "07")))
       }
     }
 
   def parseShortYear =
-    InputParsers.forPattern("foobar", "{table}{yyMMdd}") must beLike {
+    PatternParsers.makeFileNameMatcher("foobar", "{table}{yyMMdd}") must beLike {
       case \/-(matcher) => {
         matcher("foobar140807") must_== \/-(Match(List("2014", "08", "07")))
       }
     }
 
   def parseLiterals =
-    InputParsers.forPattern("credit", "{table}_{yyyy-MM-dd-HH}") must beLike {
+    PatternParsers.makeFileNameMatcher("credit", "{table}_{yyyy-MM-dd-HH}") must beLike {
       case \/-(matcher) => {
         matcher("credit_2014-08-07-20") must_== \/-(Match(List("2014", "08", "07", "20")))
       }
     }
 
   def parseDifferentElementOrder =
-    InputParsers.forPattern("credit", "{ddMMyyyy}{table}") must beLike {
+    PatternParsers.makeFileNameMatcher("credit", "{ddMMyyyy}{table}") must beLike {
       case \/-(matcher) => {
         matcher("07082014credit") must_== \/-(Match(List("2014", "08", "07")))
       }
     }
 
   def parseWildcards =
-    InputParsers.forPattern("mytable", "{table}*{yyyyMMdd}*") must beLike {
+    PatternParsers.makeFileNameMatcher("mytable", "{table}*{yyyyMMdd}*") must beLike {
       case \/-(matcher) => {
         matcher("mytable-foobar-2014-201408079999.foobar") must_== \/-(Match(List("2014", "08", "07")))
       }
     }
 
   def wildcardMatchLarge =
-    InputParsers.forPattern("mytable", "*{yyyyMMdd}*") must beLike {
+    PatternParsers.makeFileNameMatcher("mytable", "*{yyyyMMdd}*") must beLike {
       case \/-(matcher) => {
         matcher("foo-20141225-bar-20150224.txt") must_== \/-(Match(List("2015", "02", "24")))
       }
     }
 
   def parseQuestionMarks =
-    InputParsers.forPattern("mytable", "{table}??{yyyyMMdd}") must beLike {
+    PatternParsers.makeFileNameMatcher("mytable", "{table}??{yyyyMMdd}") must beLike {
       case \/-(matcher) => {
         matcher("mytable--20140807") must_== \/-(Match(List("2014", "08", "07")))
         matcher("mytable0020140807") must_== \/-(Match(List("2014", "08", "07")))
@@ -118,64 +118,64 @@ failing file pattern parsing
     }
 
   def parseDuplicateTimestamps =
-    InputParsers.forPattern("cars", "{table}_{yyyyMMdd}_{MMyyyy}") must beLike {
+    PatternParsers.makeFileNameMatcher("cars", "{table}_{yyyyMMdd}_{MMyyyy}") must beLike {
       case \/-(matcher) => {
         matcher("cars_20140807_082014") must_== \/-(Match(List("2014", "08", "07")))
       }
     }
 
   def parseCombinedTimestampFields =
-    InputParsers.forPattern("cars", "{yyyy}_{table}_{MMdd}") must beLike {
+    PatternParsers.makeFileNameMatcher("cars", "{yyyy}_{table}_{MMdd}") must beLike {
       case \/-(matcher) => {
         matcher("2014_cars_0807") must_== \/-(Match(List("2014", "08", "07")))
       }
     }
 
   def parseMiscField =
-    InputParsers.forPattern("mytable", "{table}-{yyyy-MM-dd}-{??}*") must beLike {
+    PatternParsers.makeFileNameMatcher("mytable", "{table}-{yyyy-MM-dd}-{??}*") must beLike {
       case \/-(matcher) => {
         matcher("mytable-2015-02-24-a1.DAT") must_== \/-(Match(List("2015", "02", "24", "a1")))
       }
     }
 
   def parseCrazyMiscField =
-    InputParsers.forPattern("mytable", "{yyyyMMdd}{*??*?**}") must beLike {
+    PatternParsers.makeFileNameMatcher("mytable", "{yyyyMMdd}{*??*?**}") must beLike {
       case \/-(matcher) => {
         matcher("20150224foo") must_== \/-(Match(List("2015", "02", "24", "foo")))
       }
     }
 
   def parseTwoMiscFields =
-    InputParsers.forPattern("foo", "{*}-{ddMMyy}-{*}") must beLike {
+    PatternParsers.makeFileNameMatcher("foo", "{*}-{ddMMyy}-{*}") must beLike {
       case \/-(matcher) => {
         matcher("000-240215-bbb") must_== \/-(Match(List("2015", "02", "24", "000", "bbb")))
       }
     }
 
   def expectOneTimestamp =
-    InputParsers.forPattern("marketing", "{table}") must beLike {
+    PatternParsers.makeFileNameMatcher("marketing", "{table}") must beLike {
       case -\/(_) => ok
     }
 
   def expectContiguousFields =
-    InputParsers.forPattern("marketing", "{table}{yyyydd}") must beLike {
+    PatternParsers.makeFileNameMatcher("marketing", "{table}{yyyydd}") must beLike {
       case -\/(_) => ok
     }
 
   def expectYear =
-    InputParsers.forPattern("marketing", "{table}{MMdd}") must beLike {
+    PatternParsers.makeFileNameMatcher("marketing", "{table}{MMdd}") must beLike {
       case -\/(_) => ok
     }
 
   def expectConstantFieldValue =
-    InputParsers.forPattern("dummy", "{table}_{yyMM}_{yyMM}") must beLike {
+    PatternParsers.makeFileNameMatcher("dummy", "{table}_{yyMM}_{yyMM}") must beLike {
       case \/-(matcher) => {
         matcher("dummy_1408_1401") must beLike { case -\/(_) => ok }
       }
     }
 
   def expectValidFieldValues =
-    InputParsers.forPattern("dummy", "{table}{yyyyMMdd}") must beLike {
+    PatternParsers.makeFileNameMatcher("dummy", "{table}{yyyyMMdd}") must beLike {
       case \/-(matcher) => {
         matcher("dummy20140231") must beLike { case -\/(_) => ok }
       }
