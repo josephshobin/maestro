@@ -31,15 +31,21 @@ object FieldsMacro {
   def impl[A <: ThriftStruct: c.WeakTypeTag](c: Context) = {
     import c.universe._
 
-    val typ       = c.universe.weakTypeOf[A]
-    val entries   = Inspect.fields[A](c)
-    val companion = typ.typeSymbol.companionSymbol
+    val typ        = c.universe.weakTypeOf[A]
+    val entries    = Inspect.fields[A](c)
+    val companion  = typ.typeSymbol.companionSymbol
     val nameGetter = newTermName("name")
+    val idGetter   = newTermName("id")
+    
+    val accessor = q"""class Accessor[T](id: Int) extends Function1[${typ}, T] {
+                           def apply(x: ${typ}): T = x.productElement(id-1).asInstanceOf[T]
+                       }"""
 
     val fields = entries.map({
       case (method, field) =>
-        val name    = q"""$companion.${newTermName(field + "Field")}.$nameGetter"""
-        val extract = Function(List(ValDef(Modifiers(Flag.PARAM), newTermName("x"), TypeTree(), EmptyTree)), Select(Ident(newTermName("x")), method.name))
+        val term    = q"""$companion.${newTermName(field + "Field")}"""
+        val name    = q"""$term.$nameGetter"""
+        val extract = q"""new Accessor[${method.returnType}]($term.$idGetter)"""
         (method, field, q"""au.com.cba.omnia.maestro.core.data.Field[${typ}, ${method.returnType}]($name, ${extract})""")
     }).map({
       case (method, field, value) =>
@@ -51,7 +57,8 @@ object FieldsMacro {
         val n = newTermName(field)
         q"$n"
     })
-    val r =q"class FieldsWrapper { ..$fields; def AllFields = List(..$refs) }; new FieldsWrapper {}"
+    val r =q"class FieldsWrapper { $accessor; ..$fields; def AllFields = List(..$refs) }; new FieldsWrapper {}"
+    println (r)
     c.Expr(r)
   }
 }
