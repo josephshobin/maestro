@@ -58,7 +58,6 @@ object FieldsMacro {
         q"$n"
     })
     val r =q"class FieldsWrapper { $accessor; ..$fields; def AllFields = List(..$refs) }; new FieldsWrapper {}"
-    println (r)
     c.Expr(r)
   }
 }
