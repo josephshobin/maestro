@@ -37,27 +37,29 @@ object FieldsMacro {
     val nameGetter = newTermName("name")
     val idGetter   = newTermName("id")
     
-    val accessor = q"""class Accessor[T](id: Int) extends Function1[${typ}, T] {
-                           def apply(x: ${typ}): T = x.productElement(id-1).asInstanceOf[T]
-                       }"""
-
-    val fields = entries.map({
+    val (accessors, fields) = entries.map({
       case (method, field) =>
-        val term    = q"""$companion.${newTermName(field + "Field")}"""
-        val name    = q"""$term.$nameGetter"""
-        val extract = q"""new Accessor[${method.returnType}]($term.$idGetter)"""
-        (method, field, q"""au.com.cba.omnia.maestro.core.data.Field[${typ}, ${method.returnType}]($name, ${extract})""")
-    }).map({
-      case (method, field, value) =>
-        val n = newTermName(field)
-        q"""val ${n} = $value"""
-    })
+        val term      = q"""$companion.${newTermName(field + "Field")}"""
+        val srcName   = q"""$term.$nameGetter"""
+        val srcId     = q"""$term.$idGetter"""
+
+        val getName = newTermName(s"${field}Accessor")
+        val get = q"""au.com.cba.omnia.maestro.core.data.Accessor[${method.returnType}]($srcId)"""
+        val getDef  = q"""val $getName = $get"""
+
+        val fldName = newTermName(field)
+        val fld = q"""au.com.cba.omnia.maestro.core.data.Field[$typ, ${method.returnType}]($srcName,$getName)"""
+        val fldDef  = q"""val ${fldName} = $fld"""
+
+        
+        (getDef, fldDef)
+    }).unzip
     val refs = entries.map({
       case (method, field) =>
         val n = newTermName(field)
         q"$n"
     })
-    val r =q"class FieldsWrapper { $accessor; ..$fields; def AllFields = List(..$refs) }; new FieldsWrapper {}"
+    val r =q"class FieldsWrapper { ..$accessors; ..$fields; def AllFields = List(..$refs) }; new FieldsWrapper {}"
     c.Expr(r)
   }
 }
