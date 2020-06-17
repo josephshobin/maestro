@@ -13,8 +13,6 @@
 //   limitations under the License.
 package au.com.cba.omnia.maestro.schema
 
-import au.com.cba.omnia.maestro.schema.hive._
-import au.com.cba.omnia.maestro.schema.syntax._
 import au.com.cba.omnia.maestro.schema.pretty._
 
 
@@ -44,4 +42,3 @@ case class TableSpec(
       ("columns",   JsonList(columnSpecs.map { _.toJson }, true))),
       true)
 }
-

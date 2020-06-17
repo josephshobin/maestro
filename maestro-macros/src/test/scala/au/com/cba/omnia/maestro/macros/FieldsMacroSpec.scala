@@ -14,6 +14,8 @@
 
 package au.com.cba.omnia.maestro.macros
 
+import MacroSupport.Fields
+
 import au.com.cba.omnia.maestro.test.Spec
 import au.com.cba.omnia.maestro.test.Arbitraries._
 import au.com.cba.omnia.maestro.test.thrift.humbug.{Types => HTypes}
@@ -24,13 +26,18 @@ object FieldsMacroSpec extends Spec { def is = s2"""
 FieldsMacro
 ===========
 
-The fields macro creates fields
+The Fields macro creates fields
 
   with the name of the thrift field for humbug  $nameHumbug
   with the name of the thrift field for scrooge $nameScrooge
   that can extract a value for humbug           $extractHumbug
   that can extract a value for scrooge          $extractScrooge
   that satisfies an equality test               $satisfiesEquality
+
+The DerivedFields macro supplies an implicit typeclass instance that provides
+
+  the id-ordered list of fields for humbug      $implicitHumbug
+  the id-ordered list of fields for scrooge     $implicitScrooge
 """
 
   val humbugFields  = Macros.mkFields[HTypes]
@@ -58,8 +65,6 @@ The fields macro creates fields
     scroogeFields.StringField.get(t) === t.stringField
     scroogeFields.LongField.get(t)   === t.longField
     scroogeFields.DoubleField.get(t) === t.doubleField
-
-
   }
 
   def satisfiesEquality = {
@@ -69,5 +74,18 @@ The fields macro creates fields
 
     fieldList must have size 7
     fieldList.contains(stringField) === true
+  }
+
+  // Example of a function (used in subsequent tests) requiring implicit evidence of Fields[T]
+  def genericFieldNames[T : Fields] = implicitly[Fields[T]].AllFields.map(_.name)
+
+  val fieldNamesOrderedByFieldId = List("stringField", "booleanField", "intField", "longField", "doubleField", "optIntField", "optStringField")
+
+  def implicitHumbug = {
+    genericFieldNames[HTypes] mustEqual fieldNamesOrderedByFieldId
+  }
+
+  def implicitScrooge = {
+    genericFieldNames[STypes] mustEqual fieldNamesOrderedByFieldId
   }
 }

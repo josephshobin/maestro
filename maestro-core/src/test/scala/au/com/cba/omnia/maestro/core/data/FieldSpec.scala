@@ -32,6 +32,8 @@ Fields with
   same names but different Thrift struct type should NOT be equal         $fieldDiffStructTypes
   same names but different return type should throw an Exception          $fieldDiffReturnTypes
   same names and Thrift struct should be equal and have equal hashCode    $fieldNameAndTypeEqual
+  fields lifted to a higher level structure                               $fieldLift
+  fields actually refer to the structType and columnType                  $noMartians
 """
   val genDifferentString = for {
     string1 <- Gen.alphaStr
@@ -76,5 +78,23 @@ Fields with
 
     notValidEqualityCheck must throwA(new RuntimeException("Can't have two columns with the same name from the same Thrift structure with different column type"))
 
+  }
+
+  case class A (i:Int)
+  case class B (a: A, s:String)
+
+  def fieldLift = {
+    val aToI = Field("a.i", (x: A)  => x.i)
+    val bToI = aToI.zoom[B](_.a)
+    bToI.get(B(A(2), "whatever")) must_== 2
+  }
+
+  case class SomeStruct(sc: SomeColumn)
+  case class SomeColumn(ss: SomeStruct, s: String)
+
+  def noMartians = {
+    val aToI = Field[SomeStruct, SomeColumn]("somestruct.somecolumn", (x: SomeStruct)  => x.sc)
+    aToI.structType must_== manifest[SomeStruct]
+    aToI.columnType must_== manifest[SomeColumn]
   }
 }

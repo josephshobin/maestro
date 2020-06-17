@@ -15,39 +15,35 @@ package au.com.cba.omnia.maestro.schema
 
 import scala.collection._
 
-import au.com.cba.omnia.maestro.schema._
-import au.com.cba.omnia.maestro.schema.syntax._
-import au.com.cba.omnia.maestro.schema.tope._
-
 
 /** Histogram squasher */
 object Squash {
 
-  /** Given a histogram of how many values in a column match each classifier, 
+  /** Given a histogram of how many values in a column match each classifier,
    *  remove the counts that don't provide any extra type information.
    *
    *   We do three types of squashing:
    *
-   *  1) Squash Parents. 
+   *  1) Squash Parents.
    *     If we have a child count classifier that has the same count as the parent,
    *     then we remove the count for the parent.
    *
    *     As parent classifiers are guaranteed to match all values that their
    *     children do, the count for the parent doesn't tell use anything
    *     more than the count for the child.
-   * 
+   *
    *     For example, if we have Real:100 and Digits:100 we only keep
    *     Digits:100 because digit strings are also real numbers.
    *
-   *  2) Squash Partitioned. 
+   *  2) Squash Partitioned.
    *     For some parents node with count N, if there are child nodes that are
    *     partitions of the parent, all the partitions have counts, and the sum
    *     of those counts sum to N, then we can remove *all* child nodes reachable
-   *     from the parent. 
+   *     from the parent.
    *
    *     For example, if we have Real:100, PosReal:70 and NegReal:30, we only keep
    *     Real:100. The fact that a certain percentage of values are Positive
-   *     or Negative is useful information in itself, but we don't need it when 
+   *     or Negative is useful information in itself, but we don't need it when
    *     deciding what type the values are. All we want is the name of the set
    *     that contains all the values in the column (ie Real).
    *
@@ -56,18 +52,18 @@ object Squash {
    *     that are mutually separate, and the the sum of the counts for the child
    *     nodes is N, then remove the count for the parent.
    *
-   *     For example, if we have Digits:100, Exact("0"):40, Exact("1"):60, 
-   *     then we only keep  Exact("0"):40 and Exact("1"):60. 
+   *     For example, if we have Digits:100, Exact("0"):40, Exact("1"):60,
+   *     then we only keep  Exact("0"):40 and Exact("1"):60.
    *
    *     As parent classifiers are guaranteed to match all values that their
    *     children do, then the count of the parent doesn't tell us anything
-   *     more than the count for the child. 
+   *     more than the count for the child.
    */
   def squash(hist: Histogram): Histogram = {
 
     // Squash all the things.
-    val squashSet =    
-      squashParents(hist) ++ 
+    val squashSet =
+      squashParents(hist) ++
       squashPartitioned(hist) ++
       squashSeparate(hist)
 
@@ -83,7 +79,7 @@ object Squash {
   // ----------------------------------------------------------------
   /** If we have a child count classifier that has the same count as the parent,
       then we remove the count for the parent. */
-  def squashParents(hist: Histogram): Set[Classifier] = 
+  def squashParents(hist: Histogram): Set[Classifier] =
     hist.counts
       .flatMap { tChild => squashSetOfParent(hist, tChild._1) }
       .toSet
@@ -92,7 +88,7 @@ object Squash {
   /** Collect the set of parent classifiers to remove,
       given a single child classifier. */
   def squashSetOfParent(hist: Histogram, child: Classifier): Set[Classifier] =
-    child match { 
+    child match {
       case ClasSyntax(sChild) =>
         sChild.parents
           .flatMap { sParent => squashSetOfParentChild(hist, ClasSyntax(sParent), child) }
@@ -122,33 +118,33 @@ object Squash {
    *  partitions of the parent, all the partitions have counts, and the sum
    *  of those counts sum to N, then we can remove *all* child nodes reachable
    *  from the parent. */
-  def squashPartitioned(hist: Histogram): Set[Classifier] = 
+  def squashPartitioned(hist: Histogram): Set[Classifier] =
     hist.counts
       .flatMap { tNode => squashPartitionedOfParent(hist, tNode._1) }
       .toSet
 
   /** When squashing partitions, get the children to remove given a
       single parent classifier. */
-  def squashPartitionedOfParent(hist: Histogram, master: Classifier): Set[Classifier] = 
+  def squashPartitionedOfParent(hist: Histogram, master: Classifier): Set[Classifier] =
     master match {
-      case ClasTope(_, _) => 
+      case ClasTope(_, _) =>
         Set.empty
 
       case ClasSyntax(sMaster) => {
 
         // All the children of this master node.
-        val ssChildren: Set[Syntax] = 
+        val ssChildren: Set[Syntax] =
           Syntaxes.children(sMaster)
 
         // The children that are partitions of the master.
-        val ssPartitions: Set[Syntax] = 
+        val ssPartitions: Set[Syntax] =
           Syntaxes.partitions(sMaster)
 
-        val csPartitions: Set[(Syntax, Int)] = 
-          ssPartitions.flatMap { s => 
+        val csPartitions: Set[(Syntax, Int)] =
+          ssPartitions.flatMap { s =>
             if (hist.counts.isDefinedAt(ClasSyntax(s)))
                   Seq((s, hist.counts(ClasSyntax(s))))
-            else  Seq((s, 0)) 
+            else  Seq((s, 0))
           }
 
         // Sum of counts of for all the partition nodes.
@@ -174,26 +170,26 @@ object Squash {
         // If partitions have the same counts of the master then,
         // we want to remove all descendants.
         if ((nPartitions > 0)                &&
-            (countMaster == countPartitions) && 
+            (countMaster == countPartitions) &&
             (nPartitions == nPartitionsActive))
             ssDescendants.map { s => ClasSyntax(s) }.toSet
-        else  Set.empty 
-      } 
+        else  Set.empty
+      }
     }
 
 
   // ----------------------------------------------------------------
   /** For some parent node with count N, if there is a set of child nodes that
-   *  are mutually separate, and the sum of all those nodes is N, then remove 
+   *  are mutually separate, and the sum of all those nodes is N, then remove
    *  the parent. */
-  def squashSeparate(hist: Histogram): Set[Classifier] = 
+  def squashSeparate(hist: Histogram): Set[Classifier] =
     hist.counts
       .flatMap { tNode => squashSeparateOfParent(hist, tNode._1) }
       .toSet
 
   /** When squashing separate, get the classifiers to remove given the
       starting parent classifier. */
-  def squashSeparateOfParent(hist: Histogram, parent: Classifier): Set[Classifier] = 
+  def squashSeparateOfParent(hist: Histogram, parent: Classifier): Set[Classifier] =
     parent match {
       case ClasTope(_, _) =>
         Set.empty
@@ -205,12 +201,12 @@ object Squash {
           Syntaxes.descendants(sParent)
 
         val histS: Map[Syntax, Int] =
-          hist.counts.map { 
+          hist.counts.map {
             case (ClasSyntax(s),  n)  => (s, n)
             case (ClasTope(_, s), n)  => (s, n) }
 
         // The descendants along with their counts.
-        val snDescendants: Set[(Syntax, Int)] = 
+        val snDescendants: Set[(Syntax, Int)] =
           ssDescendants.flatMap { s =>
             if (histS.isDefinedAt(s))
                   Seq((s, histS(s)))
@@ -226,22 +222,22 @@ object Squash {
           snDescendantsActive.map { sn => sn._2 }.sum
 
         // Flags saying whether each active descendant is separate from all the others.
-        val fsSeparate: Set[Boolean] = 
+        val fsSeparate: Set[Boolean] =
           snDescendantsActive.flatMap { sn1 =>
-          snDescendantsActive.map     { sn2 => 
+          snDescendantsActive.map     { sn2 =>
             if   (sn1 == sn2) true
             else (Syntaxes.separate(sn1._1, sn2._1))
           }}
 
         // Count for the parent node.
-        val countParent = 
+        val countParent =
           if (hist.counts.isDefinedAt(parent))
                 hist.counts(parent)
           else  0
 
-        // If there is at least one child, and all the children are separate, 
+        // If there is at least one child, and all the children are separate,
         // and the counts on the children sum to the counts on the parent,
-        // then we can remove the parent. 
+        // then we can remove the parent.
         if ( (snDescendantsActive.size > 0) &&
              (fsSeparate       == Set(true)) &&
              (countDescendants == countParent))
@@ -250,4 +246,3 @@ object Squash {
       }
     }
 }
-

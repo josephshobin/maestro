@@ -14,44 +14,42 @@
 
 package au.com.cba.omnia.maestro.macros
 
-import au.com.cba.omnia.maestro.core.codec._
-import au.com.cba.omnia.maestro.core.data._
-import com.twitter.scrooge._
+import scala.reflect.macros.whitebox.Context
 
-import scala.reflect.macros.Context
-import scala.annotation.StaticAnnotation
+import com.twitter.scrooge.ThriftStruct
 
-class body(tree: Any) extends StaticAnnotation
+import au.com.cba.omnia.maestro.core.data.Field
 
 /**
   * A macro that generates a `Field` for every field in the thrift struct. All the fields are
-  * members of FieldsWrapper.
+  * members of the object returned by the macro.
   */
 object FieldsMacro {
+  trait Fields[A] {
+    def AllFields: List[Field[A, _]]
+  }
+
   def impl[A <: ThriftStruct: c.WeakTypeTag](c: Context) = {
     import c.universe._
 
-    val typ       = c.universe.weakTypeOf[A]
-    val entries   = Inspect.fields[A](c)
-    val companion = typ.typeSymbol.companionSymbol
-    val nameGetter = newTermName("name")
+    val typ        = c.universe.weakTypeOf[A]
+    val entries    = Inspect.info[A](c)
+    val companion  = typ.typeSymbol.companion
+    val nameGetter = TermName("name")
+    
+    val fields = entries.map { case (i, name, method) =>
+      val field   = name.capitalize
+      val srcName = q"""$companion.${TermName(field + "Field")}.$nameGetter"""
+      val get     = q"""au.com.cba.omnia.maestro.core.data.Accessor[${method.returnType}]($i)"""
+      val fld     = q"""au.com.cba.omnia.maestro.core.data.Field[$typ, ${method.returnType}]($srcName, $get)"""
+        
+      q"""val ${TermName(field)} = $fld"""
+    }
 
-    val fields = entries.map({
-      case (method, field) =>
-        val name    = q"""$companion.${newTermName(field + "Field")}.$nameGetter"""
-        val extract = Function(List(ValDef(Modifiers(Flag.PARAM), newTermName("x"), TypeTree(), EmptyTree)), Select(Ident(newTermName("x")), method.name))
-        (method, field, q"""au.com.cba.omnia.maestro.core.data.Field[${typ}, ${method.returnType}]($name, ${extract})""")
-    }).map({
-      case (method, field, value) =>
-        val n = newTermName(field)
-        q"""val ${n} = $value"""
-    })
-    val refs = entries.map({
-      case (method, field) =>
-        val n = newTermName(field)
-        q"$n"
-    })
-    val r =q"class FieldsWrapper { ..$fields; def AllFields = List(..$refs) }; new FieldsWrapper {}"
+    val refs = entries.map { case (_, name, _) => q"${TermName(name.capitalize)}" }
+    val r    = q"""new au.com.cba.omnia.maestro.macros.FieldsMacro.Fields[$typ] {
+                 ..$fields; def AllFields = List(..$refs)
+               }"""
     c.Expr(r)
   }
 }

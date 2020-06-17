@@ -43,3 +43,8 @@ struct JoinableScrooge {
 struct UnjoinableScrooge {
   1: string  missingField
 }
+
+struct UnjoinableScrooge2 {
+  1: string  missingField
+  2: string  missingField2
+}

@@ -14,18 +14,17 @@
 package au.com.cba.omnia.maestro.schema
 package jobs
 
-import scala.io.Source
-import org.apache.hadoop.fs._
 import org.apache.commons.lang.StringEscapeUtils._
-import com.twitter.scalding._, Dsl._, TDsl._
+
+import com.twitter.scalding._
 
 import au.com.cba.omnia.maestro.schema._
 import au.com.cba.omnia.maestro.schema.hive.Input
 
 
-/** Job to check a table against an existing schema. 
+/** Job to check a table against an existing schema.
  *  Rows that do not match the schema get written to the given errors file. */
-class Check(args: Args) 
+class Check(args: Args)
   extends Job(args) {
 
   // Local file containing schema to check against.
@@ -43,7 +42,7 @@ class Check(args: Args)
   val pipeOutDiag    = TypedTsv[String](args("out-hdfs-diag"))
 
   // Load column names and formats from the schema definition.
-  val columnDefs: List[Check.ColumnDef] = 
+  val columnDefs: List[Check.ColumnDef] =
     Load.loadFormats(fileSchema)
 
 
@@ -67,14 +66,14 @@ class Check(args: Args)
 object Check {
 
   /** A column name along with its format. */
-  type ColumnDef 
+  type ColumnDef
     = (String, Option[Format])
 
 
   /** Check if a row matches the associated table spec.
    *  Returns the column specs and field values that don't match.
    *
-   *  If the number of fields does not match the number of columns then we 
+   *  If the number of fields does not match the number of columns then we
    *  get the result for the shorter of the two. */
   def slurpErrorFields(s: String, sep: Char, columnDefs: List[ColumnDef])
     : List[(ColumnDef, String)] =
@@ -84,7 +83,7 @@ object Check {
       .toList
 
 
-  /** Check if a row matches its associated list of ColumnDefs. 
+  /** Check if a row matches its associated list of ColumnDefs.
    *
    *  If the number of fields does not match the number of columns then we
    *  get the result for the shorter of the two. */
@@ -100,7 +99,7 @@ object Check {
     : Boolean =
     columnDef._2 match {
       case None         => true
-      case Some(format) => format.matches(s) 
+      case Some(format) => format.matches(s)
     }
 
 
@@ -110,7 +109,7 @@ object Check {
     : Option[(ColumnDef, String)] =
     columnDef._2 match {
       case None          => None
-      case Some(format)  => 
+      case Some(format)  =>
         if (format.matches(s))
               None
         else  Some((columnDef, s)) }
@@ -118,26 +117,25 @@ object Check {
 
 
 object Pretty {
-  
+
   /** Pretty print an optional format, showing '-' for the None case. */
-  def prettyOptionFormat(op: Option[Format]): String = 
-    op match { 
+  def prettyOptionFormat(op: Option[Format]): String =
+    op match {
         case None    => "-"
-        case Some(f) => f.pretty 
+        case Some(f) => f.pretty
     }
 
 
   /** Pretty print a sequence of check errors. */
-  def prettyDiag(errors: Seq[(Check.ColumnDef, String)]): String = 
+  def prettyDiag(errors: Seq[(Check.ColumnDef, String)]): String =
     errors
       .map { case (columnDef, s) =>
-        columnDef._1 ++ 
-        "("       ++ 
-        "\"" ++ escapeJava(s) ++ "\"" ++ 
-        " : "     ++ 
-        prettyOptionFormat(columnDef._2) ++ 
-        ")" 
+        columnDef._1 ++
+        "("       ++
+        "\"" ++ escapeJava(s) ++ "\"" ++
+        " : "     ++
+        prettyOptionFormat(columnDef._2) ++
+        ")"
        }
       .mkString("; ")
 }
-

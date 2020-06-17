@@ -1,4 +1,4 @@
-//   Copyright 2014 Commonwealth Bank of Australia
+//   Copyright 2014-2018 Commonwealth Bank of Australia
 //
 //   Licensed under the Apache License, Version 2.0 (the "License");
 //   you may not use this file except in compliance with the License.
@@ -15,9 +15,13 @@
 import sbt._
 import Keys._
 
+
 import com.twitter.scrooge.ScroogeSBT._
 
-import sbtassembly.Plugin._, AssemblyKeys._
+import sbtassembly.AssemblyPlugin.autoImport.assembly
+
+import sbtunidoc.Plugin.{ScalaUnidoc, UnidocKeys}
+import UnidocKeys.{unidoc, unidocProjectFilter}
 
 import au.com.cba.omnia.uniform.core.standard.StandardProjectPlugin._
 import au.com.cba.omnia.uniform.core.version.UniqueVersionPlugin._
@@ -30,15 +34,28 @@ import au.com.cba.omnia.humbug.HumbugSBT._
 object build extends Build {
   type Sett = Def.Setting[_]
 
-  val thermometerVersion = "0.5.3-20150221124731-40453fc"
-  val ebenezerVersion    = "0.12.0-20150123010146-98a02be"
-  val omnitoolVersion    = "1.5.0-20150113041805-fef6da5"
-  val parquetVersion     = "1.2.5-cdh4.6.0-p485"
+  val thermometerVersion = "1.6.11-20190730062717-f203e44"
+  val ebenezerVersion    = "0.24.9-20190730094137-20cd049"
+  val beeswaxVersion     = "0.2.11-20190730083634-78faba5"
+  val omnitoolVersion    = "1.15.9-20190730073144-b52646c"
+  val permafrostVersion  = "0.15.9-20190730083617-8bb13bc"
+  val edgeVersion        = "3.8.9-20190730094133-4be8b98"
+  val humbugVersion      = "0.8.8-20190730062733-7025390"
+  val parlourVersion     = "1.14.2-20190730073214-152deaa"
 
   lazy val standardSettings: Seq[Sett] =
     Defaults.coreDefaultSettings ++
     uniformDependencySettings ++
-    uniform.docSettings("https://github.com/CommBank/maestro")
+    strictDependencySettings ++
+    uniform.docSettings("https://github.com/CommBank/maestro") ++
+    Seq(
+      logLevel in assembly := Level.Error,
+      updateOptions := updateOptions.value.withCachedResolution(true),
+      // Run tests sequentially across the subprojects.
+      concurrentRestrictions in Global := Seq(
+        Tags.limit(Tags.Test, 1)
+      )
+    )
 
   lazy val all = Project(
     id = "all"
@@ -49,9 +66,10 @@ object build extends Build {
     ++ uniform.ghsettings
     ++ Seq[Sett](
          publishArtifact := false
-       , addCompilerPlugin("org.scalamacros" % "paradise" % "2.0.0" cross CrossVersion.full)
+       , addCompilerPlugin(depend.macroParadise())
+       , unidocProjectFilter in (ScalaUnidoc, unidoc) := inAnyProject -- inProjects(example, schema, benchmark)
     )
-  , aggregate = Seq(core, macros, api, test, schema)
+  , aggregate = Seq(core, macros, scalding, api, test, schema)
   )
 
   lazy val api = Project(
@@ -61,10 +79,11 @@ object build extends Build {
        standardSettings
     ++ uniform.project("maestro", "au.com.cba.omnia.maestro.api")
     ++ Seq[Sett](
-      libraryDependencies ++= depend.hadoop() ++ depend.testing()
+      libraryDependencies ++= depend.hadoopClasspath ++ depend.hadoop() ++ depend.testing()
     )
   ).dependsOn(core)
    .dependsOn(macros)
+   .dependsOn(scalding)
 
   lazy val core = Project(
     id = "core"
@@ -73,31 +92,29 @@ object build extends Build {
        standardSettings
     ++ uniformThriftSettings
     ++ uniform.project("maestro-core", "au.com.cba.omnia.maestro.core")
+    ++ humbugSettings
     ++ Seq[Sett](
-      scroogeThriftSourceFolder in Test <<=
-        (sourceDirectory) { _ / "test" / "thrift" / "scrooge" },
-      libraryDependencies ++= Seq(
-        "com.google.code.findbugs" % "jsr305"    % "2.0.3" // Needed for guava.
-      , "com.google.guava"         % "guava"     % "16.0.1"
-      ) ++ depend.scalaz() ++ depend.scalding() ++ depend.hadoop()
-        ++ depend.shapeless() ++ depend.testing() ++ depend.time()
-        ++ depend.omnia("ebenezer-hive", ebenezerVersion)
-        ++ depend.omnia("permafrost",    "0.2.0-20150113073328-8994d5b")
-        ++ depend.omnia("edge",          "3.2.0-20150113103131-d8aabb2")
-        ++ depend.omnia("humbug-core",   "0.3.0-20150220061008-1e3ca3f")
+      scroogeThriftSourceFolder in Test := sourceDirectory.value / "test" / "thrift" / "scrooge",
+      humbugThriftSourceFolder in Test := sourceDirectory.value / "test" / "thrift" / "humbug",
+      libraryDependencies ++=
+           depend.scalaz()
+        ++ depend.hadoopClasspath
+        ++ depend.hadoop()
+        ++ depend.shapeless() ++ depend.testing()
+        ++ depend.omnia("beeswax",       beeswaxVersion)
+        ++ depend.omnia("ebenezer",      ebenezerVersion)
+        ++ depend.omnia("ebenezer-test", ebenezerVersion, "test")
+        ++ depend.omnia("permafrost",    permafrostVersion)
+        ++ depend.omnia("edge",          edgeVersion)
+        ++ depend.omnia("humbug-core",   humbugVersion)
         ++ depend.omnia("omnitool-time", omnitoolVersion)
         ++ depend.omnia("omnitool-file", omnitoolVersion)
-        ++ depend.omnia("parlour",       "1.6.1-20150128235623-bd13c9b")
+        ++ depend.omnia("parlour",       parlourVersion)
+        ++ depend.scalikejdbc()
         ++ Seq(
-          "commons-validator"  % "commons-validator" % "1.4.0",
-          "org.apache.commons" % "commons-compress"  % "1.8.1",
-          "org.apache.hadoop"  % "hadoop-tools"      % depend.versions.hadoop % "provided",
-          "com.twitter"        % "parquet-cascading" % parquetVersion         % "provided",
-          "au.com.cba.omnia"  %% "ebenezer-test"     % ebenezerVersion        % "test",
-          "au.com.cba.omnia"  %% "thermometer-hive"  % thermometerVersion     % "test",
-          "org.scalikejdbc"   %% "scalikejdbc"       % "2.1.2"                % "test",
-          "org.hsqldb"         % "hsqldb"            % "1.8.0.10"             % "test",
-          "com.twitter"        % "parquet-hive"      % parquetVersion         % "test"
+          noHadoop("commons-validator"  % "commons-validator" % "1.4.0"),
+          "com.opencsv"                 % "opencsv"           % "3.3"
+            exclude ("org.apache.commons", "commons-lang3") // conflicts with hive
         ),
       parallelExecution in Test := false
     )
@@ -110,16 +127,34 @@ object build extends Build {
        standardSettings
     ++ uniform.project("maestro-macros", "au.com.cba.omnia.maestro.macros")
     ++ Seq[Sett](
-         libraryDependencies <++= scalaVersion.apply(sv => Seq(
-           "org.scala-lang"   % "scala-compiler" % sv
-         , "org.scala-lang"   % "scala-reflect"  % sv
-         , "org.scalamacros" %% "quasiquotes"    % "2.0.0"
-         , "com.twitter"      % "util-eval_2.10" % "6.22.1" % Test
-         ) ++ depend.testing())
-       , addCompilerPlugin("org.scalamacros" % "paradise" % "2.0.0" cross CrossVersion.full)
+         libraryDependencies ++= Seq(
+           "org.scala-lang" % "scala-reflect" % scalaVersion.value
+         ) ++ depend.testing()
+       , addCompilerPlugin(depend.macroParadise())
     )
   ).dependsOn(core)
    .dependsOn(test % "test")
+
+  lazy val scalding = Project(
+    id = "scalding"
+  , base = file("maestro-scalding")
+  , settings =
+       standardSettings
+    ++ uniformThriftSettings
+    ++ uniform.project("maestro-scalding", "au.com.cba.omnia.maestro.scalding")
+    ++ Seq[Sett](
+      libraryDependencies ++=
+           depend.scalaz()
+        ++ depend.scalding()
+        ++ depend.hadoopClasspath
+        ++ depend.hadoop()
+        ++ depend.parquet()
+        ++ depend.testing()
+        ++ depend.omnia("omnitool-core", omnitoolVersion, "test").map(_ classifier "tests")
+        ++ depend.omnia("thermometer-hive", thermometerVersion, "test"),
+      parallelExecution in Test := false
+    )
+  ).dependsOn(core % "compile->compile;test->test")
 
   lazy val schema = Project(
     id = "schema"
@@ -129,11 +164,11 @@ object build extends Build {
     ++ uniform.project("maestro-schema", "au.com.cba.omnia.maestro.schema")
     ++ uniformAssemblySettings
     ++ Seq[Sett](
-          libraryDependencies <++= scalaVersion.apply(sv => Seq(
-            "com.quantifind"     %% "sumac"         % "0.3.0"
-          , "org.scala-lang"     %  "scala-reflect" % sv
-          , "org.apache.commons" %  "commons-lang3" % "3.3.2"
-          ) ++ depend.scalding() ++ depend.hadoop())
+          libraryDependencies ++= Seq(
+            "com.quantifind"         %% "sumac"                    % "0.3.0"
+          , "org.scala-lang"         %  "scala-reflect"            % scalaVersion.value
+          , "org.apache.commons"     %  "commons-lang3"            % "3.1"
+          ) ++ depend.scalding() ++ depend.hadoopClasspath ++ depend.hadoop()
        )
     )
 
@@ -146,18 +181,15 @@ object build extends Build {
     ++ uniformAssemblySettings
     ++ uniformThriftSettings
     ++ Seq[Sett](
-         libraryDependencies ++= depend.hadoop() ++ Seq(
-           "com.twitter"      % "parquet-hive"      % parquetVersion % "test",
-           "com.twitter"      % "parquet-cascading" % parquetVersion % "provided",
-           "org.scalikejdbc" %% "scalikejdbc"       % "2.1.2"               % "test",
-           "org.hsqldb"       % "hsqldb"            % "1.8.0.10"            % "test"
-         )
+         libraryDependencies ++= depend.hadoopClasspath ++ depend.hadoop() ++ depend.parquet() ++
+           depend.scalikejdbc().map(_.copy(configurations = Some("test")))
        , parallelExecution in Test := false
+       , sources in doc in Compile := List()
+       , addCompilerPlugin(depend.macroParadise())
     )
   ).dependsOn(core)
    .dependsOn(macros)
    .dependsOn(api)
-   .dependsOn(schema)
    .dependsOn(test % "test")
 
   lazy val benchmark = Project(
@@ -166,10 +198,12 @@ object build extends Build {
   , settings =
        standardSettings
     ++ uniform.project("maestro-benchmark", "au.com.cba.omnia.maestro.benchmark")
-    ++ uniformThriftSettings
+    ++ humbugSettings
     ++ Seq[Sett](
       libraryDependencies ++= Seq(
-        "com.github.axel22" %% "scalameter" % "0.4"
+        "com.storm-enroute" %% "scalameter" % "0.6"
+          exclude("org.scala-lang.modules", "scala-parser-combinators_2.11")
+          exclude("org.scala-lang.modules", "scala-xml_2.11")
       ) ++ depend.testing()
     , testFrameworks += new TestFramework("org.scalameter.ScalaMeterFramework")
     , parallelExecution in Test := false
@@ -188,16 +222,12 @@ object build extends Build {
     ++ uniformThriftSettings
     ++ humbugSettings
     ++ Seq[Sett](
-         scroogeThriftSourceFolder in Compile <<= (sourceDirectory) { _ / "main" / "thrift" / "scrooge" }
-       , humbugThriftSourceFolder  in Compile <<= (sourceDirectory) { _ / "main" / "thrift" / "humbug" }
-       , (humbugIsDirty in Compile) <<= (humbugIsDirty in Compile) map { (_) => true }
-       , libraryDependencies ++= Seq (
-           "org.specs2"               %% "specs2"                        % depend.versions.specs
-         , "org.scalacheck"           %% "scalacheck"                    % depend.versions.scalacheck
-         , "org.scalaz"               %% "scalaz-scalacheck-binding"     % depend.versions.scalaz
-         ) ++ depend.omnia("ebenezer-test", ebenezerVersion)
-           ++ depend.omnia("thermometer-hive", thermometerVersion)
-           ++ depend.hadoop()
+         scroogeThriftSourceFolder in Compile := sourceDirectory.value / "main" / "thrift" / "scrooge"
+       , humbugThriftSourceFolder  in Compile := sourceDirectory.value / "main" / "thrift" / "humbug"
+       , libraryDependencies ++=
+           depend.omnia("ebenezer-test",    ebenezerVersion)
+           ++ depend.hadoopClasspath ++ depend.hadoop()
+           ++ depend.testing(configuration = "test")
     )
-  ).dependsOn(core)
+  ).dependsOn(core, scalding)
 }

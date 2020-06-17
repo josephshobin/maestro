@@ -12,13 +12,9 @@
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
 
-package au.com.cba.omnia.maestro.core
-package codec
+package au.com.cba.omnia.maestro.core.codec
 
-import au.com.cba.omnia.maestro.core.data._
-import scala.util.control.NonFatal
 import scalaz._, Scalaz._, \&/._
-import shapeless.{ProductTypeClass, TypeClassCompanion}
 
 sealed trait Reason
 case class ParseError(value: String, expected: String, error: These[String, Throwable]) extends Reason

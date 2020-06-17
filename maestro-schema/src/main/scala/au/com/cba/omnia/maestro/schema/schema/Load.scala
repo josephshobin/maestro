@@ -16,16 +16,9 @@ package au.com.cba.omnia.maestro.schema
 
 import scala.io.Source
 
-import scala.util.parsing.combinator.Parsers
-import scala.util.parsing.input.{NoPosition, Position, Reader}
+import scala.util.parsing.json.JSON
 
-import au.com.cba.omnia.maestro.schema._
-import au.com.cba.omnia.maestro.schema.syntax._
-import au.com.cba.omnia.maestro.schema.hive._
-import au.com.cba.omnia.maestro.schema.hive.HiveType._
 import au.com.cba.omnia.maestro.schema.SchemaParser._
-
-import scala.util.parsing.json.{JSON}
 
 
 object Load {
@@ -45,7 +38,7 @@ object Load {
         .getLines .mkString ("\n")
 
     // Do initial JSON parsing of schema file.
-    val jsonSchema: JsonSchema = 
+    val jsonSchema: JsonSchema =
       JSON.parseFull(strSchema)
           .getOrElse { throw new Exception("Cannot parse schema file as JSON.") }
           .asInstanceOf[JsonSchema]
@@ -55,7 +48,7 @@ object Load {
       (for {
         cols  <- jsonSchema.get("columns")
         name  <- sequence(cols.map { col =>
-            for { nm <- col.get("name") } 
+            for { nm <- col.get("name") }
             yield nm.asInstanceOf[String] })
       } yield name)
       .getOrElse (throw new Exception("Cannot parse names from JSON schema."))
@@ -65,7 +58,7 @@ object Load {
       (for {
         cols  <- jsonSchema.get("columns")
         name  <- sequence(cols.map { col =>
-            for { nm <- col.get("format") } 
+            for { nm <- col.get("format") }
             yield nm.asInstanceOf[String] })
       } yield name)
       .getOrElse (throw new Exception("Cannot parse formats from JSON schema."))
@@ -93,5 +86,5 @@ object Load {
 
   /** Missing Haskell-esque sequence function. */
   def sequence[A](a: List[Option[A]]): Option[List[A]] =
-    a.foldRight[Option[List[A]]](Some(Nil))((x,y) => map2(x,y)(_ :: _)) 
+    a.foldRight[Option[List[A]]](Some(Nil))((x,y) => map2(x,y)(_ :: _))
 }

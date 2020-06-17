@@ -17,7 +17,6 @@ package taste
 import scala.collection._
 
 import au.com.cba.omnia.maestro.schema._
-import au.com.cba.omnia.maestro.schema.taste._
 import au.com.cba.omnia.maestro.schema.pretty._
 
 
@@ -46,7 +45,7 @@ case class Table(
           storageTypes.get(rt.fieldTastes.length)
 
         ("columns", rt.toJson(oNames, oStorage))
-      }}, 
+      }},
       true)
 }
 
@@ -96,7 +95,7 @@ object Table {
 
 
   /** Get all the possible classifications for a given field. */
-  def classifyField(s: String): Array[Int] = 
+  def classifyField(s: String): Array[Int] =
     Classifier.all
       .map {_.likeness(s)}
       .map {like => if (like >= 1.0) 1 else 0}
@@ -105,7 +104,7 @@ object Table {
   /** Combine the information in two TableTastes to produce a new one. */
   def combine(tt1: Table, tt2: Table): Table = {
 
-    val tt3: Table = 
+    val tt3: Table =
       empty(tt1.maxHistSize)
 
     for ((num, rt1) <- tt1.rowTastes) {

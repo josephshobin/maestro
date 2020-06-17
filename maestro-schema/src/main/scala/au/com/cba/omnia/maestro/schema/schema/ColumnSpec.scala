@@ -14,7 +14,6 @@
 package au.com.cba.omnia.maestro.schema
 
 import au.com.cba.omnia.maestro.schema.hive._
-import au.com.cba.omnia.maestro.schema.syntax._
 import au.com.cba.omnia.maestro.schema.pretty._
 
 
@@ -37,24 +36,24 @@ case class ColumnSpec(
   def matches(s: String): Boolean =
     format match {
       case None     => true
-      case Some(f)  => f.matches(s) 
+      case Some(f)  => f.matches(s)
     }
 
 
   /** Pretty print the ColumnSpec as a String. */
-  def pretty: String = 
-    f"$name%-25s"               + " | "  + 
-    HiveType.pretty(hivetype)   + " | "  + 
-    prettyOptionFormat(format)  + "\n"   + 
-    " " * 25                    + " | "  + 
+  def pretty: String =
+    f"$name%-25s"               + " | "  +
+    HiveType.pretty(hivetype)   + " | "  +
+    prettyOptionFormat(format)  + "\n"   +
+    " " * 25                    + " | "  +
     histogram.pretty + ";\n"
 
 
   /** Pretty print a Format as String, or '-' for a missing format. */
-  def prettyOptionFormat(of: Option[Format]): String = 
-    of match { 
+  def prettyOptionFormat(of: Option[Format]): String =
+    of match {
       case None     => "-"
-      case Some(f)  => f.pretty 
+      case Some(f)  => f.pretty
     }
 
 
@@ -73,4 +72,3 @@ case class ColumnSpec(
     JsonMap(fields, true)
   }
 }
-

@@ -26,7 +26,7 @@ object Macros {
   def mkEncode[A <: ThriftStruct]: Encode[A] =
     macro EncodeMacro.impl[A]
 
-  def mkFields[A <: ThriftStruct]: Any =
+  def mkFields[A <: ThriftStruct]: FieldsMacro.Fields[A] =
     macro FieldsMacro.impl[A]
 
   def mkTag[A <: ThriftStruct]: Tag[A] =
@@ -53,6 +53,7 @@ object Macros {
     * val result: TypedPipe[SubTwo] = pipe.map(transform.run(_))
     * }}}
     */
+  @deprecated("Superseded by automap", "2.13.0")
   def mkTransform[A <: ThriftStruct, B <: ThriftStruct](
     transformations: (Symbol, A => _)*
   ): Transform[A, B] = macro TransformMacro.impl[A, B]
@@ -72,6 +73,7 @@ object Macros {
     *   the same name) amongst the input thrift structs.
     * - Every matching input field's type conforms to the type of it's output field.
     */
+  @deprecated("Superseded by automap", "2.13.0")
   def mkJoin[A <: Product, B <: ThriftStruct]: Join[A, B] =
     macro JoinMacro.impl[A, B]
 }
@@ -90,9 +92,25 @@ trait MacroSupport {
   implicit def DerivedTag[A <: ThriftStruct]: Tag[A] =
     macro TagMacro.impl[A]
 
-  /** Macro generated structural type containing the fields for a Thrift struct. */
-  // NOTE: This isn't really any, it is a structural type containing all the fields.
-  def Fields[A <: ThriftStruct]: Any =
+  // type synonym so that "import Maestro.Fields" imports both type and def (below)
+  type Fields[A] = FieldsMacro.Fields[A]
+
+  /** Macro generated structural type containing the fields for a Thrift struct.
+    *
+    * Used with a concrete type, each field will be available as a property. Eg:
+    *
+    *     Fields[Customer].Balance
+    *
+    * If all you need is the [[AllFields]] member (i.e. a list of the fields), then
+    * you can instead obtain an implicit instance of the [[Fields]] typeclass.
+    * This has the benefit that it can be used in a generic context. Example:
+    *
+    *     def myGenericFunction[A : Fields] {
+    *       val fieldList = implicitly[Fields[A]].AllFields
+    *       // ...
+    *     }
+    */
+  implicit def Fields[A <: ThriftStruct]: Fields[A] =
     macro FieldsMacro.impl[A]
 }
 

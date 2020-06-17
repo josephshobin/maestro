@@ -15,7 +15,9 @@
 package au.com.cba.omnia.maestro.test
 
 import org.specs2._
+import org.specs2.matcher.ThrownExpectations
 
 abstract class Spec
   extends Specification
+  with ThrownExpectations
   with ScalaCheck

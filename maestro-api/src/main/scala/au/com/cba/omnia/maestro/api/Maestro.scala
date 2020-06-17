@@ -16,8 +16,8 @@ package au.com.cba.omnia.maestro.api
 
 import au.com.cba.omnia.permafrost.hdfs.HdfsStrings
 
-import au.com.cba.omnia.maestro.core.task.{LoadExecution, SqoopExecution, UploadExecution, ViewExecution, QueryExecution}
-import au.com.cba.omnia.maestro.core.scalding.ExecutionOps
+import au.com.cba.omnia.maestro.task.{LoadExecution, SqoopExecution, UploadExecution, ViewExecution}
+import au.com.cba.omnia.maestro.scalding.ExecutionOps
 
 
 /** Provides task methods, and any implicits required to use them. */
@@ -25,7 +25,6 @@ object Maestro
   extends UploadExecution
   with LoadExecution
   with ViewExecution
-  with QueryExecution
   with SqoopExecution
   with ExecutionOps
   with MacroSupport

@@ -14,7 +14,8 @@
 
 package au.com.cba.omnia.maestro.macros
 
-import scala.reflect.macros.Context
+import scala.reflect.macros.whitebox.Context
+import scala.util.{Try, Failure, Success}
 
 object MacroUtils {
   /** Returns `Some(t)` iff `o` is `Option[T]` else returns `None`. */
@@ -28,4 +29,31 @@ object MacroUtils {
       Some(typParams.head)
     } else None
   }
+
+  /**
+   * Attempts to compile `code` and returns a sequence of error messages. The messages are calculated at compile time but
+   * returned at runtime. Inspired by :
+   *
+   * [[https://github.com/milessabin/shapeless/blob/master/core/src/main/scala/shapeless/test/typechecking.scala]]
+   *
+   * @param code the string literal containing the code to compile. NOTE: This must be a string literal, not an arbitrary
+   *             String - typed value, since the actual check is done at compile time.
+   * @return a sequence of error messages, or an empty sequence if `code` compiles correctly.
+   */
+  def compileErrors(code: String): Option[String] = macro compileErrorsImpl
+
+  def compileErrorsImpl(c:Context)(code: c.Expr[String]):c.Expr[Option[String]] = {
+    import c.universe.{Try => _, _}
+
+    val Expr(Literal(Constant(codeStr: String))) = code
+    val attemptToTypecheck = Try(c.typecheck(c.parse(s"{ val ${TermName(c.freshName)} = { $codeStr } }")))
+
+
+    val errors: Option[String] = attemptToTypecheck match {
+      case Failure(e) => Some(e.getMessage)
+      case Success(_) => None
+    }
+    c.Expr[Option[String]](q"${errors}")
+  }
+
 }

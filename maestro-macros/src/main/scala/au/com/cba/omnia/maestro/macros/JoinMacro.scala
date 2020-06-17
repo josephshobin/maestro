@@ -14,13 +14,14 @@
 
 package au.com.cba.omnia.maestro.macros
 
-import scala.reflect.macros.Context
+import scala.reflect.macros.whitebox.Context
 
-import scalaz._, scalaz.syntax.either._
+import scalaz.{\/, -\/, \/-, NonEmptyList}
+import scalaz.syntax.either._
+
+import org.apache.commons.lang.WordUtils
 
 import com.twitter.scrooge.ThriftStruct
-
-import au.com.cba.omnia.humbug.HumbugThriftStruct
 
 import au.com.cba.omnia.maestro.core.transform.Join
 
@@ -40,7 +41,6 @@ import au.com.cba.omnia.maestro.core.transform.Join
   * - Every matching input field's type conforms to the type of it's output field.
   */
 object JoinMacro {
-
   type Fails[A] = String \/ A
 
   def impl[A <: Product : c.WeakTypeTag, B <: ThriftStruct : c.WeakTypeTag](c: Context)
@@ -61,17 +61,17 @@ object JoinMacro {
       c.abort(c.enclosingPosition, msg)
 
     def thriftType(typ: Type): ThriftType =
-      ThriftType(typ, Inspect.fieldsUnsafe(c)(typ).map { case (method, name) =>
-        ThriftField(newTermName(decapitalize(name)), method.typeSignatureIn(typ))
+      ThriftType(typ, Inspect.infoUnsafe(c)(typ).map { case (_, name, method) =>
+        ThriftField(TermName(WordUtils.uncapitalize(name)), method.typeSignatureIn(typ))
       })
 
     // get the thrift structures from the input type, or fail if the input type is not a product of thrift structs
     def thriftInputs(inTyp: Type): Fails[List[ThriftInput]] = {
-      val thriftInputs = inTyp.declarations collect {
+      val thriftInputs = inTyp.decls collect {
         case sym: TermSymbol if sym.isVal && sym.isCaseAccessor => {
           val typ = sym.typeSignatureIn(inTyp)
           if (typ <:< weakTypeOf[ThriftStruct])
-            ThriftInput(newTermName(sym.name.toString.trim), thriftType(typ)).right
+            ThriftInput(TermName(sym.name.toString.trim), thriftType(typ)).right
           else
             s"$typ is not a thrift struct".left
         }
@@ -116,7 +116,7 @@ object JoinMacro {
      *     throw new IllegalArgumentException("Ambiguous source values: " + details)
      *   }
      */
-    def unambSource(inpTerm: TermName, mapping: Mapping) = {
+    def disambiguateSource(inpTerm: TermName, mapping: Mapping) = {
       val head@(input1, field1) = mapping.sources.head
       val headValue = q"""$inpTerm.${input1.name}.${field1.name}"""
 
@@ -127,10 +127,10 @@ object JoinMacro {
           val tailValues = tail map { case (input, field) =>
             q"""$inpTerm.${input.name}.${field.name}"""
           }
-          val errorDetails = (head :: tail) map { case (input, field) => {
-            val strLit = c.literal(s"${input.thrift.typ.typeSymbol.name}.${field.name} = ")
+          val errorDetails = (head :: tail) map { case (input, field) =>
+            val strLit = s"${input.thrift.typ.typeSymbol.name}.${field.name} = "
             q"""$strLit + $inpTerm.${input.name}.${field.name}"""
-          }}
+          }
           val condition = tailValues
             .map(tailValue => q"""$headValue == $tailValue""")
             .reduce((condition1,condition2) => q"""$condition1 && $condition2""")
@@ -147,38 +147,6 @@ object JoinMacro {
       }
     }
 
-    /* Produces code like (modulo whitespace, fully qualified paths, variable names, and multiple sources for one field):
-     *
-     *   Joined(
-     *     field1 = input._1.field1,
-     *     field2 = input._1.field2,
-     *     field3 = input._2.field3
-     *   )
-     */
-    def scroogeTree(inpTerm: TermName, outputType: Type, mappings: List[Mapping]): Tree = {
-      val companion = outputType.typeSymbol.companionSymbol
-      val params    = mappings.map(mapping => q"""${mapping.dest.name} = ${unambSource(inpTerm, mapping)}""")
-      q"""$companion.apply(..$params)"""
-    }
-
-    /* Produces code like (modulo whitespace, fully qualified paths, variable names, and multiple sources for one field):
-     *
-     *   val output1 = new Joined
-     *   output1.field1 = input._1.field1
-     *   output1.field2 = input._1.field2
-     *   output1.field3 = input._2.field3
-     *   output1
-     */
-    def humbugTree(inpTerm: TermName, outputType: Type, mappings: List[Mapping]): Tree = {
-      val out     = newTermName(c.fresh("output"))
-      val setters = mappings.map(mapping => q"""$out.${mapping.dest.name} = ${unambSource(inpTerm, mapping)}""")
-      q"""
-      val $out = new $outputType
-      ..$setters
-      $out
-      """
-    }
-
     /* Produces code like (modulo whitespace, fully qualified paths, variable names, humbug vs. scrooge, and multiple sources for one field):
      *
      *   Join[(Thrift1, Thrift2), Joined](
@@ -192,9 +160,10 @@ object JoinMacro {
      *   )
      */
     def joinTree(inputType: Type, output: ThriftType, inputs: List[ThriftInput], mappings: List[Mapping]): Tree = {
-      val inpTerm   = newTermName(c.fresh("input"))
-      val struct    = if (output.typ <:< weakTypeOf[HumbugThriftStruct]) humbugTree(inpTerm, output.typ, mappings)
-                      else                                               scroogeTree(inpTerm, output.typ, mappings)
+      val inpTerm = TermName(c.freshName("input"))
+      val struct  = Inspect.constructNamed[B](c)(
+        mappings.map(m => (m.dest.name.toString, disambiguateSource(inpTerm, m)))
+      )
 
       q"""
       au.com.cba.omnia.maestro.core.transform.Join[$inputType, ${output.typ}](
@@ -223,8 +192,4 @@ object JoinMacro {
       case (\/-(ok),  -\/(errs)) => errs.left
       case (-\/(err), -\/(errs)) => (err :: errs).left
     }.leftMap(msg(_))
-
-  def decapitalize(s: String): String =
-    if (s.length == 0) s
-    else Character.toLowerCase(s.head) +: s.tail
 }

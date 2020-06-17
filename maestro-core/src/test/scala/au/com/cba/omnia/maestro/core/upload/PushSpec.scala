@@ -90,55 +90,55 @@ push behaviour
   })
 
   def pushCopiesFile = isolatedTest((dirs: IsolatedDirs) => {
-    val src  = Data(new File(dirs.testDir, "local20140506.txt"), "foo/bar")
+    val src  = DataFile(new File(dirs.testDir, "local20140506.txt").toString, "foo/bar")
     val dest = new Path(List(dirs.hdfsDirS, "foo", "bar", "local20140506.txt") mkString File.separator)
     val conf = new Configuration
-    src.file.createNewFile must_== true
+    new File(src.file).createNewFile must_== true
 
     val copyCheck = Push.push(List(src), dirs.hdfsDirS, dirs.archiveDirS,
       dirs.hdfsArchiveDirS)
       .run(conf)
-    copyCheck mustEqual Ok(List(Copied(List(src.file), dest.getParent)))
+    copyCheck mustEqual Ok(List(Copied(List(new File(src.file)), dest.getParent)))
 
     Hdfs.exists(dest).run(conf) mustEqual Ok(true)
   })
 
   def pushCopiesSapFile = isolatedTest((dirs: IsolatedDirs) => {
-    val src  = Data(new File(dirs.testDir, "ZCR_DW01_E001_20140612_230441.DAT"), "foo")
+    val src  = DataFile(new File(dirs.testDir, "ZCR_DW01_E001_20140612_230441.DAT").toString, "foo")
     val dest = new Path(List(dirs.hdfsDirS, "foo", "ZCR_DW01_E001_20140612_230441.DAT") mkString File.separator)
     val conf = new Configuration
-    src.file.createNewFile must_== true
+    new File(src.file).createNewFile must_== true
 
     val copyCheck = Push.push(List(src), dirs.hdfsDirS, dirs.archiveDirS,
       dirs.hdfsArchiveDirS)
       .run(conf)
-    copyCheck mustEqual Ok(List(Copied(List(src.file), dest.getParent)))
+    copyCheck mustEqual Ok(List(Copied(List(new File(src.file)), dest.getParent)))
 
     Hdfs.exists(dest).run(conf) mustEqual Ok(true)
   })
 
   def pushCreatesIngestionFile = isolatedTest((dirs: IsolatedDirs) => {
-    val src  = Data(new File(dirs.testDir, "local20140506.txt"), "bar")
+    val src  = DataFile(new File(dirs.testDir, "local20140506.txt").toString, "bar")
     val dest = new Path(List(dirs.hdfsDirS, "bar", "local20140506.txt") mkString File.separator)
     val flag = new Path(List(dirs.hdfsDirS, "bar", "_INGESTION_COMPLETE") mkString File.separator)
     val conf = new Configuration
-    src.file.createNewFile must_== true
+    new File(src.file).createNewFile must_== true
 
     val copyCheck = Push.push(List(src), dirs.hdfsDirS, dirs.archiveDirS,
       dirs.hdfsArchiveDirS)
       .run(conf)
 
-    copyCheck mustEqual Ok(List(Copied(List(src.file), dest.getParent)))
+    copyCheck mustEqual Ok(List(Copied(List(new File(src.file)), dest.getParent)))
 
     Hdfs.exists(flag).run(conf) mustEqual Ok(true)
   })
 
   def pushFailsOnIngestionFile = isolatedTest((dirs: IsolatedDirs) => {
-    val src  = Data(new File(dirs.testDir, "local20140506.txt"), "bar")
+    val src  = DataFile(new File(dirs.testDir, "local20140506.txt").toString, "bar")
     val dest = new Path(List(dirs.hdfsDirS, "bar", "local20140506.txt") mkString File.separator)
     val flag = new Path(List(dirs.hdfsDirS, "bar", "_INGESTION_COMPLETE") mkString File.separator)
     val conf = new Configuration
-    src.file.createNewFile must_== true
+    new File(src.file).createNewFile must_== true
     Hdfs.mkdirs(flag.getParent).run(conf) must beLike { case Ok(_) => ok }
     Hdfs.create(flag).run(conf) must beLike { case Ok(_) => ok }
 
@@ -151,11 +151,11 @@ push behaviour
   })
 
   def pushFailsOnArchiveFile = isolatedTest((dirs: IsolatedDirs) => {
-    val src  = Data(new File(dirs.testDir, "local20140506.txt"), "bar")
+    val src  = DataFile(new File(dirs.testDir, "local20140506.txt").toString, "bar")
     val dest = new Path(List(dirs.hdfsDirS, "bar", "local20140506.txt") mkString File.separator)
     val arch = new Path(List(dirs.hdfsArchiveDirS, "bar", "local20140506.txt.gz") mkString File.separator)
     val conf = new Configuration
-    src.file.createNewFile must_== true
+    new File(src.file).createNewFile must_== true
     Hdfs.mkdirs(arch.getParent).run(conf) must beLike { case Ok(_) => ok }
     Hdfs.create(arch).run(conf) must beLike { case Ok(_) => ok }
 
@@ -168,15 +168,15 @@ push behaviour
   })
 
   def pushFailsOnDuplicate = isolatedTest((dirs: IsolatedDirs) => {
-    val src  = Data(new File(dirs.testDir, "local20140506.txt"), "bar")
+    val src  = DataFile(new File(dirs.testDir, "local20140506.txt").toString, "bar")
     val dest = new Path(List(dirs.hdfsDirS, "bar", "local20140506.txt") mkString File.separator)
     val conf = new Configuration
-    src.file.createNewFile must_== true
+    new File(src.file).createNewFile must_== true
 
     val copyCheck = Push.push(List(src), dirs.hdfsDirS, dirs.archiveDirS,
       dirs.hdfsArchiveDirS)
       .run(conf)
-    copyCheck mustEqual Ok(List(Copied(List(src.file), dest.getParent)))
+    copyCheck mustEqual Ok(List(Copied(List(new File(src.file)), dest.getParent)))
 
     val duplicateCheck = Push.push(List(src), dirs.hdfsDirS, dirs.archiveDirS,
       dirs.hdfsArchiveDirS)
@@ -185,16 +185,16 @@ push behaviour
   })
 
   def pushRemovesSourceFile = isolatedTest((dirs: IsolatedDirs) => {
-    val src  = Data(new File(dirs.testDir, "local20140506.txt"), "foo")
+    val src  = DataFile(new File(dirs.testDir, "local20140506.txt").toString, "foo")
     val dest = new Path(List(dirs.hdfsDirS, "foo", "local20140506.txt") mkString File.separator)
     val conf = new Configuration
-    src.file.createNewFile must_== true
+    new File(src.file).createNewFile must_== true
 
     val copyCheck = Push.push(List(src), dirs.hdfsDirS, dirs.archiveDirS,
       dirs.hdfsArchiveDirS)
       .run(conf)
-    copyCheck mustEqual Ok(List(Copied(List(src.file), dest.getParent)))
+    copyCheck mustEqual Ok(List(Copied(List(new File(src.file)), dest.getParent)))
 
-    src.file.exists mustEqual false
+    new File(src.file).exists mustEqual false
   })
 }

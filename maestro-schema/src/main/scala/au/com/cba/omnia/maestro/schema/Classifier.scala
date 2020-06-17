@@ -13,11 +13,9 @@
 //   limitations under the License.
 package au.com.cba.omnia.maestro.schema
 
-import  au.com.cba.omnia.maestro.schema.syntax._
-
 
 /** A wrapper for raw syntaxes, and topes with their syntax. */
-sealed trait Classifier { 
+sealed trait Classifier {
   /** Human readable name for the Classifier. */
   def name: String
 
@@ -30,12 +28,12 @@ sealed trait Classifier {
    *  classifier. */
   def likeness(s: String): Double
 
-  /** Check if this string completely matches the classifier, 
+  /** Check if this string completely matches the classifier,
    *  meaning the likeness is 1.0 */
   def matches(s: String): Boolean =
     likeness(s) >= 1.0
 
-  /** Yield the parent syntaxes of this classifier, if there are any. 
+  /** Yield the parent syntaxes of this classifier, if there are any.
    *  If a string matches this syntax, then it also matches all the parents. */
   def parents: Set[Syntax]
 }
@@ -43,7 +41,7 @@ sealed trait Classifier {
 
 /** Wrap a Syntax as a Classifier. */
 case class ClasSyntax(syntax: Syntax)
-  extends Classifier { 
+  extends Classifier {
 
   val name: String =
     syntax.name
@@ -80,7 +78,7 @@ case class ClasTope(tope: Tope, syntax: Syntax)
 /** Companion object for Classifiers. */
 object Classifier {
 
-  /** Yield an array of all classifiers we know about. 
+  /** Yield an array of all classifiers we know about.
    *  We keep classifier counts in an array to ensure they are stored unboxed at
    *  runtime. The classifiers themselves are also stored in an array so we can
    *  just map arrays to arrays when performing the count. */
@@ -88,7 +86,7 @@ object Classifier {
 
     // Classifiers that wrap raw syntaxes.
     def sx: Array[Classifier] =
-      Syntaxes.syntaxes     
+      Syntaxes.syntaxes
         .map { s => ClasSyntax(s) }.toArray
 
     // Classifiers that wrap topes.
@@ -99,4 +97,3 @@ object Classifier {
     sx ++ st
   }
 }
-

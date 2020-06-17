@@ -14,6 +14,8 @@
 
 package au.com.cba.omnia.maestro.macros
 
+import au.com.cba.omnia.omnitool.Result
+
 import au.com.cba.omnia.maestro.test.Spec
 import au.com.cba.omnia.maestro.test.thrift.humbug.{Types => HTypes}
 import au.com.cba.omnia.maestro.test.thrift.scrooge.{Types => STypes}
@@ -38,7 +40,7 @@ The tag macro creates tag
 
     //then
     val humbugFields = humbugTag.run(List("1", "2", "3", "4", "5", "6", "7"))
-    humbugFields.map({ case (_, field) => field.name }) === typesList
+    humbugFields.map(_.map({ case (_, field) => field.name })) === Result.ok(typesList)
   }
 
   def tagScrooge = {
@@ -50,6 +52,6 @@ The tag macro creates tag
 
     //then
     val scroogeFields = scroogeTag.run(List("1", "2", "3", "4", "5", "6", "7"))
-    scroogeFields.map({ case (_, field) => field.name }) === typesList
+    scroogeFields.map(_.map({ case (_, field) => field.name })) === Result.ok(typesList)
   }
 }

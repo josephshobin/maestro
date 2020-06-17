@@ -13,7 +13,6 @@
 //   limitations under the License.
 package au.com.cba.omnia.maestro.schema
 
-import au.com.cba.omnia.maestro.schema._
 import au.com.cba.omnia.maestro.schema.tope._
 
 
@@ -61,4 +60,3 @@ object Topes {
   val namesSyntaxes: Array[String] =
     topes .flatMap { _.names }
 }
-

@@ -14,15 +14,12 @@
 
 package au.com.cba.omnia.maestro.macros
 
-import scala.reflect.macros.{Context, TypecheckException}
+import scala.reflect.macros.TypecheckException
+import scala.reflect.macros.whitebox.Context
 
 import scalaz._, Scalaz._
 
-import org.apache.commons.lang.WordUtils
-
 import com.twitter.scrooge.ThriftStruct
-
-import au.com.cba.omnia.humbug.HumbugThriftStruct
 
 import au.com.cba.omnia.maestro.core.transform.Transform
 
@@ -42,15 +39,12 @@ object TransformMacro {
   ): c.Expr[Transform[A, B]] = {
     import c.universe.{Symbol => _, _}
 
-    val srcType       = c.universe.weakTypeOf[A]
-    val dstType       = c.universe.weakTypeOf[B]
-    val humbugTyp     = c.universe.weakTypeOf[HumbugThriftStruct]
-    val srcFieldsInfo = Inspect.fields[A](c).map { case (f, n) => (WordUtils.uncapitalize(n), f) }.toMap
-    val dstFields     = Inspect.fields[B](c).map { case (f, n)  => (f, WordUtils.uncapitalize(n)) }
-    val expectedTypes = dstFields.map { case (f, n) => (n, f.returnType) }.toMap
+    val srcType   = c.universe.weakTypeOf[A]
+    val dstType   = c.universe.weakTypeOf[B]
+    val srcFields = Inspect.fieldsMap[A](c)
+    val dstFields = Inspect.fieldsMap[B](c)
 
-    val in  = newTermName(c.fresh)
-    val out = newTermName(c.fresh)
+    val in        = TermName(c.freshName)
 
     /** Fail compilation with nice error message. */
     def abort(msg: String) =
@@ -65,14 +59,14 @@ object TransformMacro {
       transform.tree match {
         case q"((scala.Symbol.apply(${Literal(cons: Constant)}), $f))" => {
           val name  = cons.value.toString
-          val field = newTermName(name)
+          val field = TermName(name)
 
-          expectedTypes.get(name) match {
+          dstFields.get(name) match {
             case None  => s"$name is not a member of $dstType.".left
-            case Some(tpe) => {
+            case Some(x) => {
               try {
-                c.typeCheck(q"$f: ($srcType => $tpe)")
-                  (name, q"$f.apply($in)").right
+                c.typecheck(q"$f: ($srcType => ${x.returnType})")
+                (name, q"$f.apply($in)").right
               } catch {
                 case TypecheckException(posn, msg) => s"Invalid type for transforming '$name: $msg.".left
               }
@@ -84,10 +78,10 @@ object TransformMacro {
     }
 
     /** Create code to copy fields with the same names from A to B.*/
-    def copyTransform(method: MethodSymbol, name: String): Result[(String, c.Tree)] = {
-      srcFieldsInfo.get(name) match {
+    def copyTransform(name: String, method: MethodSymbol): Result[(String, c.Tree)] = {
+      srcFields.get(name) match {
         case Some(src) if src.returnType == method.returnType =>
-          (name, q"$in.${newTermName(name)}").right
+          (name, q"$in.${TermName(name)}").right
         case Some(src) =>
           s"$name has type ${src.returnType} in $srcType but $dstType expects ${method.returnType}.".left
         case None      =>
@@ -95,61 +89,39 @@ object TransformMacro {
       }
     }
 
-    /** Create the transform for Humbug thrift structs.*/
-    def humbugTransform(transforms: List[(String, c.Tree)]) = {
-      val mapped = transforms.map { case (n, f) =>
-        val t = newTermName(n)
-        q"$out.$t = $f"
-      }
-
-      q"""
-        val $out = new $dstType()
-        ..$mapped
-
-        $out
-      """
-    }
-
-    /** Create the transform for Scrooge thrift structs.*/
-    def scroogeTransform(transforms: List[(String, c.Tree)]) = {
-      val companion = dstType.typeSymbol.companionSymbol
-      val order = dstFields.map(_._2).zipWithIndex.toMap
-      val mapped = transforms.map { case (n, f) => (order(n), f)}.sortBy(_._1).map(_._2)
-      Apply(Select(Ident(companion), newTermName("apply")), mapped)
-    }
-
+    // Parses the manual transformation rules
     val (invalidManuals, manuals) =
       transformations
         .map(t => parseTransform(t))
         .toList
         .separate
 
-    val manualDsts = manuals.map(_._1).toSet
+    val manualDsts: Set[String] = manuals.map(_._1).toSet
+
+    // Creates simple copy operations for any fields in the dst type that don't have a manual rule.
     val (invalidDefaults, defaults)   =
       dstFields
-        .filter(f => !manualDsts.contains(f._2))
-        .map(f => copyTransform(f._1, f._2))
+        .filterKeys(n => !manualDsts.contains(n))
+        .toList
+        .map { case (n, f) => copyTransform(n, f) }
         .separate
 
+    // Checks that the manual rules don't try and transform the same field multiple times.
     val multipleTransforms = manuals.groupBy(_._1).toList.filter(_._2.length != 1).map(_._1)
     if (!multipleTransforms.isEmpty) {
       abort(s"""Can't transform ${multipleTransforms.mkString(",")} multiple times.""")
     }
 
-    // Deal with any errors around the manual transformation rules
+    // Deal with any errors around the transformation rules
     val invalids = invalidManuals ++ invalidDefaults
     if (!invalids.isEmpty) {
       abort(invalids.mkString("\n"))
     }
 
-    val body = dstType match {
-      case t if t <:< humbugTyp => humbugTransform(defaults ++ manuals)
-      case _                    => scroogeTransform(defaults ++ manuals)
-    }
-
-    val result = q"""
+    val combined = Inspect.constructNamed[B](c)(defaults ++ manuals)
+    val result   = q"""
       import au.com.cba.omnia.maestro.core.transform.Transform
-      Transform[$srcType, $dstType](($in: $srcType) => $body)
+      Transform[$srcType, $dstType](($in: $srcType) => $combined)
     """
 
     c.Expr[Transform[A, B]](result)

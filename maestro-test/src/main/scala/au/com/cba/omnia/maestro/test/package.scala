@@ -15,5 +15,5 @@
 package au.com.cba.omnia.maestro
 
 package object test {
-  val SqoopExecutionTest = au.com.cba.omnia.maestro.core.task.SqoopExecutionTest
+  val SqoopExecutionTest = au.com.cba.omnia.maestro.task.SqoopExecutionTest
 }

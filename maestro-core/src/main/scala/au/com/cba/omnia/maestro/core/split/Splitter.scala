@@ -19,6 +19,8 @@ import scala.collection.JavaConverters._
 
 import com.google.common.base.{Splitter => GoogSplitter}
 
+import com.opencsv.CSVParser
+
 /**
   * Represents the notion of splitting a string into parts
   *
@@ -44,6 +46,21 @@ object Splitter {
     */
   def delimited(delimiter: String) =
     Splitter(s => GoogSplitter.on(delimiter).split(s).asScala.toList)
+
+  /**
+    * Creates a splitter that uses a CSV parser, and hence can handle quoted strings.
+    *
+    * Valid for all input which doesn't end in the middle of a quoted string.
+    */
+  def csv(delimiter: Char) =
+    Splitter(CsvParseFunction(delimiter))
+
+  private case class CsvParseFunction(delimiter: Char) extends Function[String, List[String]] {
+    // parser will not be created until function is used, and so does not have to be serialized
+    lazy val parser = new CSVParser(delimiter)
+    def apply(line: String): List[String] =
+      parser.parseLine(line).toList
+  }
 
   /**
     * Creates a splitter that splits according to predefined column lengths.

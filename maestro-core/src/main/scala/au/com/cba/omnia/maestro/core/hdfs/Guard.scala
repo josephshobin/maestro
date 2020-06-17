@@ -25,39 +25,36 @@ case class GuardFilter(filter: (FileSystem, Path) => Boolean) {
     GuardFilter((fs, p) => filter(fs, p) && that.filter(fs, p))
 }
 
+/**
+  * (DEPRECATED) Utility functions that operate on the Hadoop filesystem
+  *
+  * ''Use [[MaestroHdfs]] instead (same method names, but return type is Hdfs).''
+  */
 object Guard {
   /** Filter out any directories that HAVE a _PROCESSED file. */
   val NotProcessed = GuardFilter((fs, p) => !fs.exists(new Path(p, "_PROCESSED")))
   /** Filter out any directories that DO NOT HAVE a _INGESTION_COMPLETE file. */
   val IngestionComplete = GuardFilter((fs, p) => fs.exists(new Path(p, "_INGESTION_COMPLETE")))
-  /** Create the file system */
-  val fs = FileSystem.get(new Configuration)
 
   /** Expands the globs in the provided path and only keeps those directories that pass the filter. */
-  def expandPaths(path: String, filter: GuardFilter = NotProcessed): List[String] = {
-    fs.globStatus(new Path(path))
-      .toList
-      .filter(s => fs.isDirectory(s.getPath))
-      .map(_.getPath)
-      .filter(filter.filter(fs, _))
-      .map(_.toString)
-  }
+  def expandPaths(path: String, filter: GuardFilter = NotProcessed): List[String] = runHdfs(MaestroHdfs.expandPaths(path, filter))
 
   /** Expand the complete file paths from the expandPaths, filtering out directories and 0 byte files */
-  def listNonEmptyFiles(paths: List[String]): List[String] = {
-    for {
-      eachPath <- paths
-      status   <- fs.listStatus(new Path(eachPath))
-      if(!status.isDirectory && status.getLen>0)
-    } yield status.getPath.toString
-  }
+  def listNonEmptyFiles(paths: List[String]): List[String] = runHdfs(MaestroHdfs.listNonEmptyFiles(paths))
 
   /** As `expandPath` but the filter is `NotProcessed` and `IngestionComplete`. */
-  def expandTransferredPaths(path: String): List[String] =
-    expandPaths(path, NotProcessed &&& IngestionComplete)
+  def expandTransferredPaths(path: String): List[String] = runHdfs(MaestroHdfs.expandTransferredPaths(path))
 
   /** Creates the _PROCESSED flag to indicate completion of processing in given list of paths */
-  def createFlagFile(directoryPath : List[String]) {
-    directoryPath foreach ((x)=> Hdfs.create(Hdfs.path(s"$x/_PROCESSED")).run(new Configuration))
-  }
+  def createFlagFile(directoryPath : List[String]): Unit = runHdfs(MaestroHdfs.createFlagFile(directoryPath))
+
+  lazy val conf = new Configuration
+
+  def runHdfs[A](hdfs: Hdfs[A]): A =
+    hdfs.run(conf).foldAll(
+      a       => a,
+      msg     => throw new Exception(msg),
+      ex      => throw ex,
+      (_, ex) => throw ex
+    )
 }

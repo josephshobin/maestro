@@ -1,5 +1,0 @@
-#!/bin/sh -eux
-
-PROJECT=$(dirname $0)/..
-
-${PROJECT}/../sbt ";project example;clean;assembly"

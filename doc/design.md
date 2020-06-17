@@ -50,7 +50,7 @@ With Maestro we are trying to resolve some of these differences, or at least mak
 * Given the awkward support for SQL in the Hadoop world, we need to be able to safely refactor out SQL that needs to be manually optimised using a more powerful API/DSL like [Scalding](https://github.com/twitter/scalding). 
 * We don't believe that every data load should choose which storage format to use. A wide array of storage formats is bad from a tooling and delivery coupling perspective. Therefore, Maestro has chosen to support Parquet and Thrift as first class citizens, and all other formats as integration concerns. 
 * High level orchestration is actually a bad thing, and so we support orchestration where it makes sense for an atomic unit of work. However, we believe that reactive scheduling makes more sense in terms of flexibility, robustness and decoupling.
-* Continuous integration and continuous delivery are as important to data application as they are to the frameworks on which these applications are based. Our data developers are required to write automated tests using Maestro provided API. This is vital to allows us to maintain macro level agility of our big data platform. This point is often not well understood, but essentially if you can't automatically validate that you haven't introduced regressions when making change, change quickly stops because it is too slow/risky or costly. We can safely upgrade our Hadoop version (or anything else), run the builds and know what we have broken, and what it should be doing.   
+* Continuous integration and continuous delivery are as important to data application as they are to the frameworks on which these applications are based. Our data developers are required to write automated tests using Maestro provided API. This is vital as it allows us to maintain macro level agility of our big data platform. This point is often not well understood, but essentially if you can't automatically validate that you haven't introduced regressions when making change, change quickly stops because it is too slow/risky or costly. We can safely upgrade our Hadoop version (or anything else), run the builds and know what we have broken, and what it should be doing.   
 
 
 Ingestion Integration
@@ -88,7 +88,7 @@ As a result of this, our queries also perform far better and storage size is gre
 Standard ETL pipeline
 ---------------------
 
-The Maestro API seems to lead you down a particular path in terms of an ingestion workflow. While Maestro isn't prescriptive in terms of a stanard load pattern, it is useful to describe our standard load pattern for context. In the case of a file based load, the following steps are undertaken:
+The Maestro API seems to lead you down a particular path in terms of an ingestion workflow. While Maestro isn't prescriptive in terms of a standard load pattern, it is useful to describe our standard load pattern for context. In the case of a file based load, the following steps are undertaken:
 
 1. Load the source data onto HDFS
 1. Zip and archive the source data on the integration server(s)
@@ -134,7 +134,7 @@ We are strong believers in a positive type system and functional programming (in
 
 All of that is excellent in principle. Unfortunately, in practice there are real constraints to making this tenable. We have insane source tables with 900 columns, meaning that if we want to process these in a [type safe](https://github.com/twitter/scalding/wiki/Type-safe-api-reference) manner we are going to have problems. Scala has some 22 field limits on Tuples, and if we don't want to propogate mutation then the JVM has a 254 parameter limit on methods and constructors. 
 
-We have invested significant effort into enabling type safe functionality in our pipelines, in a way that is entirely tenable for the API user, while still being correct from a functional perspective. The result is a set of macros that enable typesafe pipelines to built for structures as wide as 1000+ columns. Let the compiler do the hard work! 
+We have invested significant effort into enabling type safe functionality in our pipelines, in a way that is entirely tenable for the API user, while still being correct from a functional perspective. The result is a set of macros that enable typesafe pipelines to be built for structures as wide as 1000+ columns. Let the compiler do the hard work! 
 
 
 Transformation

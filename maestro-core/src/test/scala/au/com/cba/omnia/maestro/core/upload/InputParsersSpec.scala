@@ -15,14 +15,13 @@
 package au.com.cba.omnia.maestro.core
 package upload
 
+import org.joda.time.{DateTime, DateTimeZone, Period}
+
 import org.specs2.Specification
 import org.specs2.matcher.ThrownExpectations
 
-import java.io.File
+import au.com.cba.omnia.omnitool.{Ok, Error}
 
-import org.joda.time.DateTime
-
-import scalaz.{\/-, -\/}
 
 class InputParsersSpec extends Specification with ThrownExpectations { def is = s2"""
 successfull file pattern parsing
@@ -49,104 +48,125 @@ failing file pattern parsing
   fail on invalid field values            $expectValidFieldValues
 """
 
+  // Helper methods
+  def forPatternUTC = InputParsers.forPattern(DateTimeZone.UTC) _
+  def utc(y: Int, mon: Int, d: Int, h: Int = 0, min: Int = 0, s: Int = 0) =
+    new DateTime(y, mon, d, h, min, s, DateTimeZone.UTC)
+
+  val sydneyTZ = DateTimeZone.forID("Australia/Sydney")
+
+  val (oneYear, oneMonth, oneDay, oneHour, oneMinute, oneSecond) = (
+    Period.years(1), Period.months(1), Period.days(1), Period.hours(1), Period.minutes(1), Period.seconds(1)
+  )
+
   def parseUpToDay =
-    InputParsers.forPattern("mytable", "{table}{yyyyMMdd}") must beLike {
-      case \/-(matcher) => {
-        matcher("mytable20140807") must_== \/-(Match(List("2014", "08", "07")))
-        matcher("mytable20140830") must_== \/-(Match(List("2014", "08", "30")))
+    forPatternUTC("mytable", "{table}{yyyyMMdd}") must beLike {
+      case Ok(matcher) => {
+        matcher("mytable20140807") must_== Ok(Match(List("2014", "08", "07"), utc(2014, 8, 7),  oneDay))
+        matcher("mytable20140830") must_== Ok(Match(List("2014", "08", "30"), utc(2014, 8, 30), oneDay))
       }
     }
 
   def parseUpToSecond =
-    InputParsers.forPattern("mytable", "{table}{yyyyMMddHHmmss}") must beLike {
-      case \/-(matcher) => {
-        matcher("mytable20140807203000") must_== \/-(Match(List("2014", "08", "07", "20", "30", "00")))
+    forPatternUTC("mytable", "{table}{yyyyMMddHHmmss}") must beLike {
+      case Ok(matcher) => {
+        matcher("mytable20140807203000") must_==
+          Ok(Match(List("2014", "08", "07", "20", "30", "00"), utc(2014, 8, 7, 20, 30, 0), oneSecond))
       }
     }
 
   def parseDifferentFieldOrder =
-    InputParsers.forPattern("foobar", "{table}{yyyyddMM}") must beLike {
-      case \/-(matcher) => {
-        matcher("foobar20140708") must_== \/-(Match(List("2014", "08", "07")))
+    forPatternUTC("foobar", "{table}{yyyyddMM}") must beLike {
+      case Ok(matcher) => {
+        matcher("foobar20140708") must_== Ok(Match(List("2014", "08", "07"), utc(2014, 8, 7), oneDay))
       }
     }
 
   def parseShortYear =
-    InputParsers.forPattern("foobar", "{table}{yyMMdd}") must beLike {
-      case \/-(matcher) => {
-        matcher("foobar140807") must_== \/-(Match(List("2014", "08", "07")))
+    forPatternUTC("foobar", "{table}{yyMMdd}") must beLike {
+      case Ok(matcher) => {
+        matcher("foobar140807") must_== Ok(Match(List("2014", "08", "07"), utc(2014, 8, 7), oneDay))
       }
     }
 
   def parseLiterals =
-    InputParsers.forPattern("credit", "{table}_{yyyy-MM-dd-HH}") must beLike {
-      case \/-(matcher) => {
-        matcher("credit_2014-08-07-20") must_== \/-(Match(List("2014", "08", "07", "20")))
+    forPatternUTC("credit", "{table}_{yyyy-MM-dd-HH}") must beLike {
+      case Ok(matcher) => {
+        matcher("credit_2014-08-07-20") must_== Ok(Match(List("2014", "08", "07", "20"), utc(2014, 8, 7, 20), oneHour))
       }
     }
 
   def parseDifferentElementOrder =
-    InputParsers.forPattern("credit", "{ddMMyyyy}{table}") must beLike {
-      case \/-(matcher) => {
-        matcher("07082014credit") must_== \/-(Match(List("2014", "08", "07")))
+    forPatternUTC("credit", "{ddMMyyyy}{table}") must beLike {
+      case Ok(matcher) => {
+        matcher("07082014credit") must_== Ok(Match(List("2014", "08", "07"), utc(2014, 8, 7), oneDay))
       }
     }
 
   def parseWildcards =
-    InputParsers.forPattern("mytable", "{table}*{yyyyMMdd}*") must beLike {
-      case \/-(matcher) => {
-        matcher("mytable-foobar-2014-201408079999.foobar") must_== \/-(Match(List("2014", "08", "07")))
+    forPatternUTC("mytable", "{table}*{yyyyMMdd}*") must beLike {
+      case Ok(matcher) => {
+        matcher("mytable-foobar-2014-201408079999.foobar") must_==
+          Ok(Match(List("2014", "08", "07"), utc(2014, 8, 7), oneDay))
       }
     }
 
   def parseQuestionMarks =
-    InputParsers.forPattern("mytable", "{table}??{yyyyMMdd}") must beLike {
-      case \/-(matcher) => {
-        matcher("mytable--20140807") must_== \/-(Match(List("2014", "08", "07")))
-        matcher("mytable0020140807") must_== \/-(Match(List("2014", "08", "07")))
+    forPatternUTC("mytable", "{table}??{yyyyMMdd}") must beLike {
+      case Ok(matcher) => {
+        matcher("mytable--20140807") must_== Ok(Match(List("2014", "08", "07"), utc(2014, 8, 7), oneDay))
+        matcher("mytable0020140807") must_== Ok(Match(List("2014", "08", "07"), utc(2014, 8, 7), oneDay))
       }
     }
 
   def parseDuplicateTimestamps =
-    InputParsers.forPattern("cars", "{table}_{yyyyMMdd}_{MMyyyy}") must beLike {
-      case \/-(matcher) => {
-        matcher("cars_20140807_082014") must_== \/-(Match(List("2014", "08", "07")))
+    forPatternUTC("cars", "{table}_{yyyyMMdd}_{MMyyyy}") must beLike {
+      case Ok(matcher) => {
+        matcher("cars_20140807_082014") must_== Ok(Match(List("2014", "08", "07"), utc(2014, 8, 7), oneDay))
       }
     }
 
   def parseCombinedTimestampFields =
-    InputParsers.forPattern("cars", "{yyyy}_{table}_{MMdd}") must beLike {
-      case \/-(matcher) => {
-        matcher("2014_cars_0807") must_== \/-(Match(List("2014", "08", "07")))
+    forPatternUTC("cars", "{yyyy}_{table}_{MMdd}") must beLike {
+      case Ok(matcher) => {
+        matcher("2014_cars_0807") must_== Ok(Match(List("2014", "08", "07"), utc(2014, 8, 7), oneDay))
       }
     }
 
   def expectOneTimestamp =
-    InputParsers.forPattern("marketing", "{table}") must beLike {
-      case -\/(_) => ok
+    forPatternUTC("marketing", "{table}") must beLike {
+      case Error(_) => ok
     }
 
   def expectContiguousFields =
-    InputParsers.forPattern("marketing", "{table}{yyyydd}") must beLike {
-      case -\/(_) => ok
+    forPatternUTC("marketing", "{table}{yyyydd}") must beLike {
+      case Error(_) => ok
     }
 
   def expectYear =
-    InputParsers.forPattern("marketing", "{table}{MMdd}") must beLike {
-      case -\/(_) => ok
+    forPatternUTC("marketing", "{table}{MMdd}") must beLike {
+      case Error(_) => ok
     }
 
   def expectConstantFieldValue =
-    InputParsers.forPattern("dummy", "{table}_{yyMM}_{yyMM}") must beLike {
-      case \/-(matcher) => {
-        matcher("dummy_1408_1401") must beLike { case -\/(_) => ok }
+    forPatternUTC("dummy", "{table}_{yyMM}_{yyMM}") must beLike {
+      case Ok(matcher) => {
+        matcher("dummy_1408_1401") must beLike { case Error(_) => ok }
       }
     }
 
   def expectValidFieldValues =
-    InputParsers.forPattern("dummy", "{table}{yyyyMMdd}") must beLike {
-      case \/-(matcher) => {
-        matcher("dummy20140231") must beLike { case -\/(_) => ok }
+    forPatternUTC("dummy", "{table}{yyyyMMdd}") must beLike {
+      case Ok(matcher) => {
+        matcher("dummy20140231") must beLike { case Error(_) => ok }
+      }
+    }
+
+  def parseLiteralsSydney =
+    InputParsers.forPattern(sydneyTZ)("credit", "{table}_{yyyy-MM-dd-HH}") must beLike {
+      case Ok(matcher) => {
+        matcher("credit_2014-08-07-20") must_==
+          Ok(Match(List("2014", "08", "07", "20"), new DateTime(2014, 8, 7, 20, 0, 0, sydneyTZ), oneHour))
       }
     }
 }

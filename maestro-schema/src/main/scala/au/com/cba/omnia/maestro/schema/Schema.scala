@@ -13,11 +13,6 @@
 //   limitations under the License.
 package au.com.cba.omnia.maestro.schema
 
-import au.com.cba.omnia.maestro.schema.hive._
-import au.com.cba.omnia.maestro.schema.syntax._
-import au.com.cba.omnia.maestro.schema.pretty._
-
-
 /** Companion object for Schemas. */
 object Schema {
 
@@ -40,4 +35,3 @@ object Schema {
     : String =
     Histogram(Classifier.all .zip (counts) .toMap).pretty
 }
-

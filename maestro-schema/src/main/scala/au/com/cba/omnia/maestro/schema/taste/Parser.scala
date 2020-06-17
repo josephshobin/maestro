@@ -15,26 +15,12 @@
 package au.com.cba.omnia.maestro.schema
 package taste
 
-import scala.io.Source
-
-import scala.util.parsing.combinator.Parsers
-import scala.util.parsing.input.{NoPosition, Position, Reader}
-
 import au.com.cba.omnia.maestro.schema._
-import au.com.cba.omnia.maestro.schema.syntax._
-import au.com.cba.omnia.maestro.schema.hive._
-import au.com.cba.omnia.maestro.schema.hive.HiveType._
-import au.com.cba.omnia.maestro.schema.SchemaParser._
-
-import scala.util.parsing.json.{JSON}
-
 
 /** Parser for taste files. */
 object Parser {
   /** Parse a taste file from the user friendly non-JSON format. */
-  def apply(input: String): Either[SchemaParser.NoSuccess, Seq[Histogram]] = 
+  def apply(input: String): Either[SchemaParser.NoSuccess, Seq[Histogram]] =
     SchemaParser.parseString(SchemaParser.pTaste, input)
 
 }
-
-

@@ -50,8 +50,8 @@ object Push {
     * This method is not atomic. It assumes no other process is touching the
     * source or multiple destination files while this method runs.
     */
-  def push(files: List[Data], destRoot: String, archRoot: String, hdfsArchRoot: String): Hdfs[List[Copied]] = {
-    val fileGroups = files.groupBy(_.fileSubDir).mapValues(subDirFiles => subDirFiles.map(_.file)).toList
+  def push(files: List[DataFile], destRoot: String, archRoot: String, hdfsArchRoot: String): Hdfs[List[Copied]] = {
+    val fileGroups = files.groupBy(_.parsedDate).mapValues(subDirFiles => subDirFiles.map(f => new File(f.file))).toList
 
     fileGroups.traverse[Hdfs, Copied] { case (subDir, sources) =>
       pushToSubDir(sources, subDir, destRoot, archRoot, hdfsArchRoot)

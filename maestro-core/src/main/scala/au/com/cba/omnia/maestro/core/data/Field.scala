@@ -20,8 +20,8 @@ package data
   * instance of `A`.
   */
 case class Field[A : Manifest, B : Manifest](name: String, get: A => B) {
-  val structType = manifest[A].getClass
-  val columnType = manifest[B].getClass
+  val structType = manifest[A]
+  val columnType = manifest[B]
 
   /**
    * Fields are consider equal if name and type of Thrift struct are equal and column type are equal
@@ -45,4 +45,12 @@ case class Field[A : Manifest, B : Manifest](name: String, get: A => B) {
   }
 
   override def hashCode: Int = name.hashCode * 41 + structType.hashCode
+
+  /**
+   * Creates a field accessor for a higher structure, if this field is contained inside a bigger structure
+   * @param f function from the bigger structure to `A`
+   * @tparam C the type of the bigger structure
+   * @return Field[C, B]
+   */
+  def zoom[C : Manifest](f: C => A):Field[C, B] = Field(name, f andThen get)
 }

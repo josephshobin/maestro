@@ -36,20 +36,21 @@ object TimeSource {
   def predetermined(time: String): TimeSource =
     Predetermined(time)
 
-  /**
-    * Use a predetermined date as the time source
-    *
-    * Converts the time to UTC, which maintains backwards compatibility, but is
-    * different to our other time sources.
-    */
+  /** Use a predetermined date as the time source */
   def predetermined(time: DateTime, format: String = "yyyy-MM-dd"): TimeSource = {
-    val f = DateTimeFormat.forPattern(format).withZoneUTC
+    val f = DateTimeFormat.forPattern(format)
     predetermined(f.print(time))
   }
 
-  /** Use the current time as the time source */
-  def now(format: String = "yyyy-MM-dd"): TimeSource =
-    predetermined(new DateTime, format)
+  /** Use the current time as the time source, using a specified time zone. */
+  def now(format: String = "yyyy-MM-dd", tz: DateTimeZone): TimeSource =
+    predetermined(new DateTime(tz), format)
+
+  /** The current time in UTC. */
+  def nowUTC(format: String = "yyyy-MM-dd"): TimeSource = now(format, DateTimeZone.UTC)
+
+  /** The current time in Sydney. */
+  def nowSydney(format: String = "yyyy-MM-dd"): TimeSource = now(format, DateTimeZone.forID("Australia/Sydney"))
 
   /** Derive the load time from the file path */
   def fromPath(extract: String => String): TimeSource =

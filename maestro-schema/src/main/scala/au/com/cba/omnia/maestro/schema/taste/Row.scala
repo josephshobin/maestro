@@ -14,7 +14,6 @@
 package au.com.cba.omnia.maestro.schema
 package taste
 
-import au.com.cba.omnia.maestro.schema.taste._
 import au.com.cba.omnia.maestro.schema.pretty._
 
 
@@ -26,9 +25,9 @@ case class Row(
    * types if we have them. */
   def toJson(
     fieldNames:   Option[List[String]],
-    storageTypes: Option[List[String]]): JsonDoc = 
+    storageTypes: Option[List[String]]): JsonDoc =
     JsonList(
-      fieldTastes.toList.zipWithIndex.map { case (ft: Field, ix: Int) => 
+      fieldTastes.toList.zipWithIndex.map { case (ft: Field, ix: Int) =>
         ft.toJson(fieldNames.map(_(ix)), storageTypes.map(_(ix))) },
       true)
 }
@@ -39,8 +38,8 @@ object Row {
   /** Create a new, empty RowTaste. */
   def empty(maxHistSize: Int, fieldNum: Int): Row = {
 
-    val fieldTastes: Array[Field] = 
-      (for  { i <- 0 to fieldNum - 1 } 
+    val fieldTastes: Array[Field] =
+      (for  { i <- 0 to fieldNum - 1 }
        yield Field.empty(maxHistSize))
         .toArray
 
@@ -57,7 +56,7 @@ object Row {
    *  If the number of fields is different than the existing RowTaste
    *  then do nothing  */
   def accumulate(rt: Row, strs: Array[String]): Unit = {
-    if (rt.fieldTastes.length != strs.length) 
+    if (rt.fieldTastes.length != strs.length)
       ()
     else for (f <- 0 to strs.length - 1) {
       Field.accumulate(rt.fieldTastes(f), strs(f))
@@ -75,4 +74,3 @@ object Row {
     Row(fieldTastesX)
   }
 }
-

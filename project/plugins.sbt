@@ -1,4 +1,4 @@
-//   Copyright 2014 Commonwealth Bank of Australia
+//   Copyright 2014-2018 Commonwealth Bank of Australia
 //
 //   Licensed under the Apache License, Version 2.0 (the "License");
 //   you may not use this file except in compliance with the License.
@@ -14,10 +14,11 @@
 
 resolvers ++= Seq(
   Resolver.url("commbank-releases-ivy", new URL("http://commbank.artifactoryonline.com/commbank/ext-releases-local-ivy"))(Patterns("[organization]/[module]_[scalaVersion]_[sbtVersion]/[revision]/[artifact](-[classifier])-[revision].[ext]")),
-  "commbank-releases" at "http://commbank.artifactoryonline.com/commbank/ext-releases-local"
+  "commbank-releases" at "http://commbank.artifactoryonline.com/commbank/ext-releases-local",
+  "cloudera" at "https://repository.cloudera.com/artifactory/cloudera-repos/"
 )
 
-val uniformVersion = "0.7.0-20150113035718-6641c80"
+val uniformVersion = "2.3.2-20190730052322-06b7f61"
 
 addSbtPlugin("au.com.cba.omnia" % "uniform-core"       % uniformVersion)
 
@@ -27,4 +28,4 @@ addSbtPlugin("au.com.cba.omnia" % "uniform-thrift"     % uniformVersion)
 
 addSbtPlugin("au.com.cba.omnia" % "uniform-assembly"   % uniformVersion)
 
-addSbtPlugin("au.com.cba.omnia" % "humbug-plugin"      % "0.3.0-20150113043431-3dc2531")
+addSbtPlugin("au.com.cba.omnia" % "humbug-plugin"      % "0.8.8-20190730062733-7025390")

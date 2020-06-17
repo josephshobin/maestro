@@ -18,11 +18,12 @@ import scala.collection.immutable._
 import scala.util.parsing.combinator.Parsers
 import scala.util.parsing.input.{NoPosition, Position, Reader}
 
-import au.com.cba.omnia.maestro.schema._
 import au.com.cba.omnia.maestro.schema.syntax._
 import au.com.cba.omnia.maestro.schema.hive._
 import au.com.cba.omnia.maestro.schema.hive.HiveType._
+
 import Lexer._
+
 
 /** Base trait for column entries that are ignored. */
 sealed trait Ignore
@@ -90,7 +91,7 @@ object SchemaParser extends Parsers {
   def parseString[A](parser: Parser[A], input: String)
     : Either[NoSuccess, A] =
     Lexer(input) match {
-      case Left(Lexer.Error   (msg, nextChar)) 
+      case Left(Lexer.Error   (msg, nextChar))
         => Left(Error  (msg, SequenceReader.empty))
 
       case Left(Lexer.Failure (msg, nextChar))
@@ -123,7 +124,7 @@ object SchemaParser extends Parsers {
   // --------------------------------------------------------------------------
   // Parse a whole table specification.
   def pSchemaTable: Parser[TableSpec] =
-    pTableExpr ~! (pIgnoreExpr?) ~! (pColumnSpec.*) ^^ { 
+    pTableExpr ~! (pIgnoreExpr?) ~! (pColumnSpec.*) ^^ {
       case tableId ~ optIgnores ~ columnSpecs =>
         TableSpec(
           tableId.database,
@@ -162,7 +163,7 @@ object SchemaParser extends Parsers {
       ~! (pTok(KNull) | err("expected null (eg: name is null)"))
     ) ^^ { case field ~ _ ~ _ => IgnoreNull(field) }
 
-  def pIgnoreSingleTerm = 
+  def pIgnoreSingleTerm =
     pIgnoreEq | pIgnoreNull | err("expected %ignore term")
 
   // Parse an %ignore expression: %ignore name = 'VALUE' and otherName is null and ... ;
@@ -177,7 +178,7 @@ object SchemaParser extends Parsers {
   // Formats
 
   // Parse an optional format (a missing format is indicated using a dash symbol)
-  def pOptFormat: Parser[Option[Format]] 
+  def pOptFormat: Parser[Option[Format]]
     = ( pTok(KDash)   ^^^ None
       | pFormat       ^^ { t: Format => Some(t) }
       | err("unknown tope"))
@@ -195,7 +196,7 @@ object SchemaParser extends Parsers {
       | pSyntax       ^^ { x: Syntax          =>  ClasSyntax(x) })
 
   // Parse a tope with its syntax.
-  def pTopeSyntax: Parser[(Tope, Syntax)] 
+  def pTopeSyntax: Parser[(Tope, Syntax)]
     = ( pTopeSyntaxGeneric
       | pTopeSyntaxDay)
 
@@ -204,14 +205,14 @@ object SchemaParser extends Parsers {
   def pTopeSyntaxGeneric: Parser[(Tope, Syntax)]
     = Topes.topeSyntaxes
       .toSeq
-      .map { case (tope, syntax) 
-              =>  (psCtor(tope.name) ~ pTok(KPeriod) ~ 
+      .map { case (tope, syntax)
+              =>  (psCtor(tope.name) ~ pTok(KPeriod) ~
                     psCtor(syntax.name)) ^^^ ((tope, syntax)) }
       .reduce(_ | _)
 
   // Parse a Day tope, with one of its syntaxes.
   def pTopeSyntaxDay:     Parser[(Tope, Syntax)]
-    = ( (psCtor("Day") ~ pTok(KPeriod) ~ pYYYYcMMcDD) ^^ 
+    = ( (psCtor("Day") ~ pTok(KPeriod) ~ pYYYYcMMcDD) ^^
           { case _ ~ _ ~ syntax => (tope.Day, syntax) }
 
       | (psCtor("Day") ~ pTok(KPeriod) ~ pDDcMMcYYYY) ^^
@@ -233,23 +234,23 @@ object SchemaParser extends Parsers {
   }
 
   // Parse a Syntax.
-  def pSyntax: Parser[Syntax] 
+  def pSyntax: Parser[Syntax]
     = ( pSimpleSyntax
       | pExactSyntax
       | pYYYYcMMcDD
       | pDDcMMcYYYY)
 
   // Parse a simple syntax.
-  def pSimpleSyntax: Parser[Syntax] 
+  def pSimpleSyntax: Parser[Syntax]
     = simpleSyntaxes
       .map { syntax: Syntax => psCtor(syntax.name) ^^^ syntax }
       .reduce(_ | _)
 
   // Parse an exact syntax.
-  def pExactSyntax: Parser[Exact] 
+  def pExactSyntax: Parser[Exact]
     = exactSyntaxes
-      .map{ exact: Exact 
-        => psCtor("Exact") ~> pTok(KBra) ~> psString(exact.str) <~ pTok(KKet) ^^^ 
+      .map{ exact: Exact
+        => psCtor("Exact") ~> pTok(KBra) ~> psString(exact.str) <~ pTok(KKet) ^^^
             Exact(exact.str)}
       .reduce(_ | _)
 
@@ -268,9 +269,9 @@ object SchemaParser extends Parsers {
   // Parse a sequence of Histograms.
   //  This is what we get from tasting a table.
   def pTaste: Parser[List[Histogram]]
-    = rep(pTasteColumn) 
+    = rep(pTasteColumn)
 
-  // Taste of a single column. 
+  // Taste of a single column.
   def pTasteColumn: Parser[Histogram]
     = pHistogram <~ pTok(KSemi)
 
@@ -278,10 +279,10 @@ object SchemaParser extends Parsers {
   // --------------------------------------------------------------------------
   // Parse a Histogram.
   def pHistogram: Parser[Histogram]
-    = repsep(pItem, pTok(KComma)) ^^ 
+    = repsep(pItem, pTok(KComma)) ^^
         { case ls : List[(Classifier, Int)] => Histogram(ls.toMap) }
 
-  def pItem: Parser[(Classifier, Int)] 
+  def pItem: Parser[(Classifier, Int)]
     = (pClassifier
         ~! (pTok(KColon) | err("expected colon after tope or syntax name"))
         ~! (pNat         | err("expected the number of occurrences of the tope"))
@@ -300,7 +301,7 @@ object SchemaParser extends Parsers {
     = extract { case KCtor(ctor) => ctor }
 
   // Parse a specific constructor.
-  def psCtor(s: String): Parser[String] 
+  def psCtor(s: String): Parser[String]
     = pCtor.filter(_ == s)
 
   // Parse a name.
@@ -308,13 +309,13 @@ object SchemaParser extends Parsers {
     = extract { case KName(name) => name }
 
   // Parse a specific name.
-  def psName(s: String): Parser[String] 
+  def psName(s: String): Parser[String]
     = pName.filter(_ == s)
 
   // Parse a Hive storage type, like 'string' or 'double'.
-  def pHiveType : Parser[HiveType] 
-    = extract { 
-        case KName("string")   => HiveType.HiveString 
+  def pHiveType : Parser[HiveType]
+    = extract {
+        case KName("string")   => HiveType.HiveString
         case KName("double")   => HiveType.HiveDouble
         case KName("int")      => HiveType.HiveInt
         case KName("bigint")   => HiveType.HiveBigInt
@@ -329,7 +330,7 @@ object SchemaParser extends Parsers {
     = extract { case KNat(n)  => n }
 
   // Parsers for particular instances of literals
-  def psString(s: String): Parser[String] 
+  def psString(s: String): Parser[String]
     = pString.filter(_ == s)
 
 
@@ -383,9 +384,8 @@ object SchemaParser extends Parsers {
     def pos:   Position     = s.headOption.fold(prev)(_.pos)
     def rest:  Reader[Elem] = if (atEnd) this else new SequenceReader(s.tail, pos)
   }
-  
+
   object SequenceReader {
     lazy val empty: SequenceReader = new SequenceReader(Seq.empty[Elem])
   }
 }
-

@@ -12,53 +12,44 @@
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
 
-package au.com.cba.omnia.maestro.benchmark
-package codec
+package au.com.cba.omnia.maestro.benchmark.codec
 
-import au.com.cba.omnia.maestro.benchmark.thrift._
-import au.com.cba.omnia.maestro.core.codec._
-import au.com.cba.omnia.maestro.macros._
+import org.scalameter.api.{PerformanceTest, Gen}
 
-import scalaz._, Scalaz._
+import au.com.cba.omnia.maestro.core.codec.{Encode, Decode}
+import au.com.cba.omnia.maestro.macros.Macros
 
-import org.scalameter.api._
+import au.com.cba.omnia.maestro.benchmark.thrift.{Struct10, Struct20, Struct30, Struct500, Generators}
+import au.com.cba.omnia.maestro.benchmark.thrift.Implicits._
 
+object CodecBenchmark extends PerformanceTest.OfflineReport {
+  def testDecode[A : Decode](gen: Gen[Array[List[String]]]) =
+    using(gen) in { rows => {
+      var i = 0
+      while (i < rows.length) {
+        Decode.decode[A]("", rows(i))
+        i = i+1
+      }
+    }}
 
-object Data extends java.io.Serializable {
-  implicit val BasicDecode: Decode[Basic] =
-    Macros.mkDecode[Basic]
-
-  implicit val BasicEncode: Encode[Basic] =
-    Macros.mkEncode[Basic]
-
-  def data(n: Int): List[Basic] = (1 to n).toList.map(n =>
-    Basic("basic-" + n, n, Int.MaxValue.toLong + n.toLong)
-  )
-
-  def source(n: Int): List[DecodeSource] =
-    data(n).map(d => ValDecodeSource(Encode.encode(d)))
-}
-
-object CodecBenchmark extends PerformanceTest.Microbenchmark {
-  import Data._
-
-  val sizes = Gen.range("size")(10000, 20000, 10000)
-
-  val toEncode = sizes.map(data(_))
-
-  val toDecode = sizes.map(source(_))
+  def testEncode[A : Encode](gen: Gen[Array[A]]) =
+    using(gen) in { values => {
+      var i = 0
+      while (i < values.length) {
+        Encode.encode[A]("", values(i))
+        i = i+1
+      }
+    }}
 
   performance of "Codecs" in {
-    measure method "encode" in {
-      using(toEncode) in { e =>
-        e.map(b => Encode.encode(b))
-      }
-    }
+    measure method "decode[Struct10]"  in testDecode[Struct10](Generators.struct10Rows)
+    measure method "decode[Struct20]"  in testDecode[Struct20](Generators.struct20Rows)
+    measure method "decode[Struct30]"  in testDecode[Struct30](Generators.struct30Rows)
+    measure method "decode[Struct500]" in testDecode[Struct500](Generators.struct500Rows)
 
-    measure method "decode" in {
-      using(toDecode) in { d =>
-        d.map(Decode.decode[Basic])
-      }
-    }
+    measure method "encode[Struct10]"  in testEncode[Struct10](Generators.struct10Values)
+    measure method "encode[Struct20]"  in testEncode[Struct20](Generators.struct20Values)
+    measure method "encode[Struct30]"  in testEncode[Struct30](Generators.struct30Values)
+    measure method "encode[Struct500]" in testEncode[Struct500](Generators.struct500Values)
   }
 }

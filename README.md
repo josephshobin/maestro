@@ -29,16 +29,17 @@ __Handy links for related Scaladoc__
 *  omnia.permafrost.hdfs.Hdfs [class](https://commbank.github.io/permafrost/latest/api/index.html#au.com.cba.omnia.permafrost.hdfs.Hdfs) and 
 [object](https://commbank.github.io/permafrost/latest/api/index.html#au.com.cba.omnia.permafrost.hdfs.Hdfs$)
 * omnia.ebenezer.scrooge.hive.Hive [class](https://commbank.github.io/ebenezer/latest/api/index.html#au.com.cba.omnia.ebenezer.scrooge.hive.Hive) and [object](https://commbank.github.io/ebenezer/latest/api/index.html#au.com.cba.omnia.ebenezer.scrooge.hive.Hive$)
-* omnia.maestro.core.scalding [RichExecution](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.core.scalding.RichExecution)
-and [RichExecutionObject](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.core.scalding.RichExecutionObject)
+* omnia.maestro.scalding [RichExecution](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.scalding.RichExecution)
+and [RichExecutionObject](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.scalding.RichExecutionObject)
 * com.twitter.scalding.Execution [trait](http://twitter.github.io/scalding/index.html#com.twitter.scalding.Execution)
 and [object](http://twitter.github.io/scalding/index.html#com.twitter.scalding.Execution$)
 
 
 __Other__
 
-* Github Pages: [https://commbank.github.io/maestro/index.html]()
-* Extended documentation (in progress): [https://github.com/CommBank/maestro/tree/master/doc]()
+* [Github Pages](https://commbank.github.io/maestro/index.html)
+* [Extended documentation (in progress)](https://github.com/CommBank/maestro/tree/master/doc)
+* [Design Document](https://github.com/CommBank/maestro/tree/master/doc/design.md) (includes the rationale for core design decisions and the historical context)
 
 starting point
 --------------
@@ -110,28 +111,45 @@ various other convenient ways of specifying operations and combining steps.
 
 An example `maestro` job that loads a customer data file into a hive table
 is in the example 
-[`CustomerJob.scala`](maestro-example/src/main/scala/au/com/cba/omnia/maestro/example/CustomerJob.scala).
+[`CustomerJob.scala`](maestro-example/src/main/scala/au/com/cba/omnia/maestro/example/CustomerAutomapJob.scala).
 An extract follows to give the flavour of executions and the their configuration.
 
 ```scala
-case class CustomerJobConfig(config: Config)  {
-  val maestro   = MaestroConfig(...)
-  val upload    = maestro.upload(...)
-  val load      = maestro.load[Customer] (...)
-  val dateTable = maestro.partitionedHiveTable[Customer, (String, String, String)] (...)
+case class CustomerAutomapConfig(config: Config) {
+  val maestro   = MaestroConfig(
+    conf        = config,
+    source      = "customer",
+    domain      = "customer",
+    tablename   = "customer"
+  )
+  val upload    = maestro.upload()
+  val load      = maestro.load[Customer](none = "null")
+  val acctTable = maestro.partitionedHiveTable[Account, (String, String, String)](
+    partition   = Partition.byDate(Fields[Account].EffectiveDate),
+    tablename   = "account"
+  )
 }
 
-/** Customer file load job with an execution for the main program */
-object CustomerJob extends MaestroJob {
-  def job: Execution[JobStatus] = for {
-    conf             <- Execution.getConfig.map(CustomerJobConfig(_))
-    uploadInfo       <- upload(conf.upload)
-    sources          <- uploadInfo.withSources
-    (pipe, loadInfo) <- load[Customer](conf.load, uploadInfo.files)
-    loadSuccess      <- loadInfo.withSuccess
-    count            <- viewHive(conf.dateTable, pipe)
-    if count == loadSuccess.actual
-  } yield JobFinished
+object CustomerAutomapJob extends MaestroJob {
+  def job: Execution[JobStatus] = {
+    @automap def customerToAccount (x: Customer): Account = {
+      id           := x.acct
+      customer     := x.id
+      balance      := x.balance / 100
+      balanceCents := x.balance % 100
+    }
+      
+    for {
+      conf             <- Execution.getConfig.map(CustomerAutomapConfig(_))
+      uploadInfo       <- upload(conf.upload)
+      sources          <- uploadInfo.withSources
+      (pipe, loadInfo) <- load[Customer](conf.load, uploadInfo.files)
+      acctPipe          = pipe.map(customerToAccount)
+      loadSuccess      <- loadInfo.withSuccess
+      count            <- viewHive(conf.acctTable, acctPipe)
+      if count == loadSuccess.actual
+    } yield JobFinished
+  }
   ...
 }
 ```
@@ -162,13 +180,18 @@ _know_ will work before we run the code (for a valid schema).
 | i32: A 32-bit signed integer                      | INT (4-byte signed integer, from -2,147,483,648 to 2,147,483,647)                             | int           |
 | i64: A 64-bit signed integer                      | BIGINT (8-byte signed integer, from -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807)  | BigInteger    |
 | double: A 64-bit floating point number            | DOUBLE (8-byte double precision floating point number)                                        | double        |
-| string: Encoding agnostic text or binary string   | string 
+| string: Encoding agnostic text or binary string   | string (non-binary only) | String
+
+__ __
+
+Complex thrift types like nested structs, list, sets and maps are not directly supported by Maestro, at least not currently.
+Although, many of the underlying libraries do support some of the forms of complex thrift types.
 
 ### Execution monad
 
 The execution monad is a key concept from scalding, see
 the `com.twitter.scalding.Execution` [trait](http://twitter.github.io/scalding/#com.twitter.scalding.Execution) and [object](http://twitter.github.io/scalding/#com.twitter.scalding.Execution$)
-as well as the maestro extensions in [`RichExecution`](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.core.scalding.RichExecution) and [`RichExecutionObject`](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.core.scalding.RichExecutionObject).
+as well as the maestro extensions in [`RichExecution`](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.scalding.RichExecution) and [`RichExecutionObject`](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.scalding.RichExecutionObject).
 
 An execution is an object with type `Execution[T]` representing some
 work that can be performed that provides an item
@@ -198,9 +221,9 @@ Exceptions in custom executions (see below) also lead to failures.
 
 Some useful methods related to failures include
 [`recoverWith`](http://twitter.github.io/scalding/#com.twitter.scalding.Execution),
-[`bracket`](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.core.scalding.RichExecution)
-[`ensuring`](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.core.scalding.RichExecution) and 
-[`onException`](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.core.scalding.RichExecution).
+[`bracket`](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.scalding.RichExecution)
+[`ensuring`](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.scalding.RichExecution) and 
+[`onException`](https://commbank.github.io/maestro/latest/api/index.html#au.com.cba.omnia.maestro.scalding.RichExecution).
 
 ### Custom executions
 

@@ -13,12 +13,10 @@
 //   limitations under the License.
 package au.com.cba.omnia.maestro.schema
 
-import au.com.cba.omnia.maestro.schema.hive._
-import au.com.cba.omnia.maestro.schema.syntax._
 import au.com.cba.omnia.maestro.schema.pretty._
 
 
-/** Histogram of how many values in a column match each Classifier 
+/** Histogram of how many values in a column match each Classifier
  *
  *  @param counts How many values match each classifier.
  */
@@ -46,7 +44,7 @@ case class Histogram(counts: Map[Classifier, Int]) {
 
   /** Extract the histogram with the classifiers in the standard sorted
       order. Don't return classifiers with zero counts. */
-  def sorted: List[(Classifier, Int)] = 
+  def sorted: List[(Classifier, Int)] =
     counts
       .toList
 

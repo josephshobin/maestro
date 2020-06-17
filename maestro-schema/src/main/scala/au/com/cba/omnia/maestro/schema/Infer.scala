@@ -13,15 +13,13 @@
 //   limitations under the License.
 package au.com.cba.omnia.maestro.schema
 
-import au.com.cba.omnia.maestro.schema._
 import au.com.cba.omnia.maestro.schema.syntax._
-import au.com.cba.omnia.maestro.schema.tope._
 
 
 /** Top-level of the schema inferencer. */
 object Infer {
 
-  /** Given a squashed histogram for a column, 
+  /** Given a squashed histogram for a column,
    *  try to infer a suitable format / semantic type for it. */
   def infer(hist: Histogram): Option[Format] = {
 
@@ -53,4 +51,3 @@ object Infer {
     else None
   }
 }
-

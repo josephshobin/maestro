@@ -49,14 +49,14 @@ object Partition {
   /** Partition by year, month, day for a given dateFormat. */
   def byDate[A](date: Field[A, String], dateFormat: String = "y-M-d"): Partition[A, (String, String, String)] =
     Partition(List("year", "month", "day"), v => {
-      val dt = DateTimeFormat.forPattern(dateFormat).parseDateTime(date.get(v))
+      val dt = DateTimeFormat.forPattern(dateFormat).parseLocalDateTime(date.get(v))
       (dt.getYear.toString, f"${dt.getMonthOfYear}%02d", f"${dt.getDayOfMonth}%02d")
     }, "%s/%s/%s")
 
   /** Partition by year, month, day, hour for a given dateFormat. */
   def byHour[A](date: Field[A, String], dateFormat: String = "y-M-d-H"): Partition[A, (String, String, String, String)] =
     Partition(List("year", "month", "day", "hour"), v => {
-      val dt = DateTimeFormat.forPattern(dateFormat).parseDateTime(date.get(v))
+      val dt = DateTimeFormat.forPattern(dateFormat).parseLocalDateTime(date.get(v))
       (dt.getYear.toString, f"${dt.getMonthOfYear}%02d", f"${dt.getDayOfMonth}%02d", f"${dt.getHourOfDay}%02d")
     }, "%s/%s/%s/%s")
 
@@ -95,28 +95,28 @@ object HivePartition {
   /** Hive style partition by year for a given dateFormat. */
   def byYear[A](date: Field[A, String], dateFormat: String): Partition[A, String] =
     Partition(List("year"), v => {
-      val dt = DateTimeFormat.forPattern(dateFormat).parseDateTime(date.get(v))
+      val dt = DateTimeFormat.forPattern(dateFormat).parseLocalDateTime(date.get(v))
       dt.getYear.toString
     }, "year=%s")
 
   /** Hive style partition by year, month for a given dateFormat. */
   def byMonth[A](date: Field[A, String], dateFormat: String): Partition[A, (String, String)] =
     Partition(List("year", "month"), v => {
-      val dt = DateTimeFormat.forPattern(dateFormat).parseDateTime(date.get(v))
+      val dt = DateTimeFormat.forPattern(dateFormat).parseLocalDateTime(date.get(v))
       (dt.getYear.toString, f"${dt.getMonthOfYear}%02d")
     }, "year=%s/month=%s")
 
   /** Hive style partition by year, month, day for a given dateFormat. */
   def byDay[A](date: Field[A, String], dateFormat: String): Partition[A, (String, String, String)] =
     Partition(List("year", "month", "day"), v => {
-      val dt = DateTimeFormat.forPattern(dateFormat).parseDateTime(date.get(v))
+      val dt = DateTimeFormat.forPattern(dateFormat).parseLocalDateTime(date.get(v))
       (dt.getYear.toString, f"${dt.getMonthOfYear}%02d", f"${dt.getDayOfMonth}%02d")
     }, "year=%s/month=%s/day=%s")
 
   /** Hive style partition by year, month, day, hour for a given dateFormat. */
   def byHour[A](date: Field[A, String], dateFormat: String): Partition[A, (String, String, String, String)] =
     Partition(List("year", "month", "day", "hour"), v => {
-      val dt = DateTimeFormat.forPattern(dateFormat).parseDateTime(date.get(v))
+      val dt = DateTimeFormat.forPattern(dateFormat).parseLocalDateTime(date.get(v))
       (dt.getYear.toString, f"${dt.getMonthOfYear}%02d", f"${dt.getDayOfMonth}%02d", f"${dt.getHourOfDay}%02d")
     }, "year=%s/month=%s/day=%s/hour=%s")
 }

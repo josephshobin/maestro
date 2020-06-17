@@ -39,7 +39,7 @@ case class Sample(
   /** Pretty print the sample histogram.
    *  We print it sorted, so the most frequently occurring strings are listed
    *  first */
-  def toJsonHistogram: JsonDoc = 
+  def toJsonHistogram: JsonDoc =
     JsonMap(
       histogram
         .toList
@@ -61,12 +61,18 @@ object Sample {
 
     // If there is already an entry in the map for this string then
     // we can increment that.
-    if (smap.histogram.isDefinedAt(str))
-      smap.histogram  += ((str, smap.histogram(str) + 1))
+    if (smap.histogram.isDefinedAt(str)) {
+      // assigning to m suppresses a Scala warning: "discarded non-Unit value"
+      //  the map is mutable, so we don't need the new reference to it
+      val m = smap.histogram += ((str, smap.histogram(str) + 1))
+    }
 
     // If there is still space in the map then add a new entry.
-    else if (smap.histogram.size < smap.maxSize - 1)
-      smap.histogram  += ((str, 1))
+    else if (smap.histogram.size < smap.maxSize - 1) {
+      // assigning to m suppresses a Scala warning: "discarded non-Unit value"
+      //  the map is mutable, so we don't need the new reference to it
+      val m = smap.histogram += ((str, 1))
+    }
 
     // Otherwise remember that we had to spill this string.
     else
@@ -101,4 +107,3 @@ object Sample {
   }
 
 }
-

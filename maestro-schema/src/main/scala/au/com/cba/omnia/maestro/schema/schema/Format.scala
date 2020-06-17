@@ -13,8 +13,6 @@
 //   limitations under the License.
 package au.com.cba.omnia.maestro.schema
 
-import au.com.cba.omnia.maestro.schema.hive._
-import au.com.cba.omnia.maestro.schema.syntax._
 import au.com.cba.omnia.maestro.schema.pretty._
 
 
@@ -24,16 +22,16 @@ import au.com.cba.omnia.maestro.schema.pretty._
 case class Format(list: List[Classifier]) {
 
   /** Append two formats. */
-  def ++(that: Format): Format = 
+  def ++(that: Format): Format =
     Format(this.list ++ that.list)
 
   /** Check if this string matches any of the classifiers in the Format. */
-  def matches(s: String): Boolean = 
+  def matches(s: String): Boolean =
     list.exists(_.matches(s))
 
   /** Pretty print a Format as a string. */
   def pretty: String =
-    list 
+    list
       .map {_.name}
       .mkString (" + ")
 
@@ -41,4 +39,3 @@ case class Format(list: List[Classifier]) {
   def toJson: JsonDoc =
     JsonString(pretty)
 }
-
